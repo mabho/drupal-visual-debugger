@@ -1,2 +1,8 @@
 # Mac system files.
 .DS_Store
+
+# Script respurces.
+/node_modules/
+
+# Compiled files folder
+/dist/
