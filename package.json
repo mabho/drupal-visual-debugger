@@ -1,0 +1,38 @@
+{
+  "name": "drupal-visual-debugger",
+  "version": "0.1.0",
+  "description": "Framework-agnostic engine that renders on-screen overlays and an inspector panel from Drupal's Twig theme debug output. Consumed by the visual_debugger Drupal module and by the Drupal Visual Debugger Chrome extension.",
+  "type": "module",
+  "main": "dist/visual-debugger.cjs.js",
+  "module": "dist/visual-debugger.esm.js",
+  "unpkg": "dist/visual-debugger.global.js",
+  "exports": {
+    ".": {
+      "import": "./dist/visual-debugger.esm.js",
+      "require": "./dist/visual-debugger.cjs.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "node build.mjs",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "drupal",
+    "theme-debug",
+    "twig",
+    "devtools",
+    "overlay"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mabho/drupal-visual-debugger.git"
+  },
+  "license": "GPL-2.0-or-later",
+  "devDependencies": {
+    "esbuild": "^0.24.0"
+  }
+}
