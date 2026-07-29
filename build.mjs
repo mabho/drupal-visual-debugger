@@ -1,6 +1,6 @@
 import * as esbuild from 'esbuild';
 import * as sass from 'sass';
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, cpSync } from 'node:fs';
 
 const shared = {
   entryPoints: ['src/index.js'],
@@ -59,6 +59,10 @@ const cssMinResult = sass.compile('sass/visual-debugger.scss', {
 });
 writeFileSync('dist/visual-debugger.min.css', cssMinResult.css);
 
+// Copy the icon font files alongside the compiled CSS — the CSS's
+// @font-face src URLs are relative to dist/, e.g. "fonts/visual-debugger-icons.ttf".
+cpSync('fonts/visual-debugger-icons/fonts', 'dist/fonts', { recursive: true });
+
 console.log(
-  'Build complete: dist/visual-debugger.{esm,cjs,global,global.min}.js, dist/visual-debugger.{css,min.css}'
+  'Build complete: dist/visual-debugger.{esm,cjs,global,global.min}.js, dist/visual-debugger.{css,min.css}, dist/fonts'
 );
