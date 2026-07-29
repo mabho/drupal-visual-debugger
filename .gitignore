@@ -6,3 +6,6 @@
 
 # Compiled files folder
 /dist/
+
+# Compiled files
+package-lock.json
