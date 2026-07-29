@@ -1,4 +1,6 @@
 import * as esbuild from 'esbuild';
+import * as sass from 'sass';
+import { writeFileSync } from 'node:fs';
 
 const shared = {
   entryPoints: ['src/index.js'],
@@ -39,4 +41,24 @@ await esbuild.build({
   minify: true,
 });
 
-console.log('Build complete: dist/visual-debugger.{esm,cjs,global,global.min}.js');
+// Compile Sass to plain CSS.
+const cssResult = sass.compile('sass/visual-debugger.scss', {
+  style: 'expanded',
+  sourceMap: true,
+  });
+
+writeFileSync('dist/visual-debugger.css', cssResult.css);
+writeFileSync(
+  'dist/visual-debugger.css.map',
+  JSON.stringify(cssResult.sourceMap)
+);
+
+// Minified CSS build for production libraries.yml.
+const cssMinResult = sass.compile('sass/visual-debugger.scss', {
+  style: 'compressed',
+});
+writeFileSync('dist/visual-debugger.min.css', cssMinResult.css);
+
+console.log(
+  'Build complete: dist/visual-debugger.{esm,cjs,global,global.min}.js, dist/visual-debugger.{css,min.css}'
+);
