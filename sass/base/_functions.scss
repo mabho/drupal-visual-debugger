@@ -1,0 +1,17 @@
+@use "sass:color";
+
+$font-size-base: 16px;
+
+// Convert px to rem.
+@function to-rem($size-px) {
+  @return calc($size-px / $font-size-base) * 1rem;
+}
+
+// Convert hex to rgb.
+@function hex-to-rgb($hex) {
+  $red: color.channel($hex, "red", $space: rgb);
+  $green: color.channel($hex, "green", $space: rgb);
+  $blue: color.channel($hex, "blue", $space: rgb);
+
+  @return $red, $green, $blue;
+}

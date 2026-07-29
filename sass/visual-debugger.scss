@@ -1,0 +1,269 @@
+@use "base/functions";
+@use "base/variables";
+@use "base/types";
+@use "base/icons";
+@use "base/form";
+@use "../fonts/visual-debugger-icons/style.scss";
+
+%instance-selected {
+  opacity: 1;
+}
+
+%selected-item-wrapper {
+  margin-bottom: calc(var(--#{variables.$prefix}controller--gutter) * .75);
+}
+
+.visual-debugger {
+
+  // Controller.
+  &--controller {
+    background-color: var(--#{variables.$prefix}controller--background-color);
+    border-radius: var(--#{variables.$prefix}controller--border-radius);
+    bottom: var(--#{variables.$prefix}controller--bottom);
+    box-shadow: var(--#{variables.$prefix}controller--box-shadow);
+    display: flex;
+    flex-direction: var(--#{variables.$prefix}controller--flex-direction);
+    font-size: var(--#{variables.$prefix}controller--font-size);
+    max-width: var(--#{variables.$prefix}controller--max-width);
+    min-width: var(--#{variables.$prefix}controller--min-width);
+    padding: var(--#{variables.$prefix}controller--padding);
+    position: var(--#{variables.$prefix}controller--position);
+    right: var(--#{variables.$prefix}controller--right);
+    top: var(--#{variables.$prefix}controller--top);
+    transition:
+      right var(--#{variables.$prefix}transition-speed),
+      transform var(--#{variables.$prefix}transition-speed);
+    z-index: var(--#{variables.$prefix}controller--z-index);
+
+    h1, h2, h3, h4 {
+      margin-bottom: var(--#{variables.$prefix}h--margin-bottom);
+      margin-top: var(--#{variables.$prefix}h--margin-top);
+    }
+
+    h3 {
+      font-size: var(--#{variables.$prefix}controller--font-size--title);
+    }
+
+    label {
+      cursor: pointer;
+    }
+
+    input {
+      background-color: var(--#{variables.$prefix}controller--input--background-color);
+      border: var(--#{variables.$prefix}controller--input--border);
+      border-radius: var(--#{variables.$prefix}controller--input--border-radius);
+      flex: 1;
+      font-family: var(--#{variables.$prefix}controller--input--font-family);
+      margin: var(--#{variables.$prefix}controller--input--margin);
+      overflow: var(--#{variables.$prefix}controller--input--overflow);
+      padding: var(--#{variables.$prefix}controller--input--padding);
+      transition: background-color var(--#{variables.$prefix}transition-speed);
+
+      &:hover {
+        background-color: var(--#{variables.$prefix}controller--input--background-color--hover);
+        box-shadow: var(--#{variables.$prefix}shadow--full);
+      }
+
+      &:focus {
+        border: var(--#{variables.$prefix}controller--input--border--focus);
+      }
+    }
+
+    // When the controller is deactivated...
+    body.visual-debugger--deactivated & {
+      &:hover {
+        transform: var(--#{variables.$prefix}controller--transform--on-deactivated);
+      }
+    }
+
+    .activation-form {
+      background-color: var(--#{variables.$prefix}controller--activation-form--background-color);
+      border-radius: var(--#{variables.$prefix}controller--activation-form--border-radius);
+      margin-left: var(--#{variables.$prefix}controller--activation-form--margin-left);
+      margin-top: var(--#{variables.$prefix}controller--activation-form--margin-top);
+      padding: var(--#{variables.$prefix}controller--activation-form--padding);
+      transition:
+        background-color var(--#{variables.$prefix}transition-speed),
+        transform var(--#{variables.$prefix}transition-speed);
+
+      // When controller is deactivated.
+      body.visual-debugger--deactivated & {
+        background-color: var(--#{variables.$prefix}controller--activation-form--background-color--on-deactivated);
+        transform: var(--#{variables.$prefix}controller--activation-form--transform--on-deactivated);
+      }
+
+      &-wrapper {
+        align-items: var(--#{variables.$prefix}controller--activation-form-wrapper--align-items);
+        column-gap: var(--#{variables.$prefix}controller--activation-form-wrapper--column-gap);
+        display: flex;
+        flex-direction: var(--#{variables.$prefix}controller--activation-form-wrapper--flex-direction);
+        justify-content: var(--#{variables.$prefix}controller--activation-form-wrapper--justify-content);
+      }
+    }
+
+    .content-auto-scroll {
+      background-color: var(--#{variables.$prefix}controller--content-auto-scroll--background-color);
+      margin: var(--#{variables.$prefix}controller--content-auto-scroll--margin);
+      overflow-y: var(--#{variables.$prefix}controller--content-auto-scroll--overflow-y);
+      padding: var(--#{variables.$prefix}controller--content-auto-scroll--padding);
+    }
+
+    // Active element.
+    .active-element {
+      margin: var(--#{variables.$prefix}active-element--margin);
+      padding: var(--#{variables.$prefix}active-element--padding);
+
+      // Info.
+      &__info {
+        column-gap: var(--#{variables.$prefix}active-element--info--column-gap);
+        display: flex;
+        flex-direction: var(--#{variables.$prefix}active-element--info--flex-direction);
+      }
+    }
+
+    // Selected element.
+    .selected-element {
+      background-color: var(--#{variables.$prefix}selected-element--background-color);
+      padding: var(--#{variables.$prefix}selected-element--padding);
+
+      // Info.
+      &__info {
+        column-gap: var(--#{variables.$prefix}selected-element--info--column-gap);
+        display: flex;
+        flex-direction: var(--#{variables.$prefix}selected-element--info--flex-direction);
+
+        &-wrapper {
+          @extend %selected-item-wrapper;
+        }
+      }
+
+      // Suggestions.
+      &__suggestions {
+        &-wrapper {
+          @extend %selected-item-wrapper;
+        }
+      }
+
+      // Tempalte File Path.
+      &__template-file-path {
+        .label {
+          background-color: var(--#{variables.$prefix}color--light-gray);
+          padding: 0 calc(var(--#{variables.$prefix}controller--gutter) * .25);
+          white-space: nowrap;
+        }
+      }
+    }
+  }
+
+  // Base layer.
+  &--base {
+    left: var(--#{variables.$prefix}base--left);
+    position: var(--#{variables.$prefix}base--position);
+    top: var(--#{variables.$prefix}base--top);
+    z-index: var(--#{variables.$prefix}base--z-index);
+
+    body.visual-debugger--deactivated & {
+      display: var(--#{variables.$prefix}base--display--on-deactivated);
+      pointer-events: var(--#{variables.$prefix}base--pointer-events--on-deactivated);
+    }
+  }
+
+  // Instance layer.
+  .instance-element {
+    background-blend-mode: var(--#{variables.$prefix}instance--background-blend-mode);
+    border: var(--#{variables.$prefix}instance--border);
+    position: var(--#{variables.$prefix}instance--position);
+    transition:
+      background-color var(--#{variables.$prefix}transition-speed),
+      margin var(--#{variables.$prefix}transition-speed),
+      width var(--#{variables.$prefix}transition-speed),
+      height var(--#{variables.$prefix}transition-speed),
+      top var(--#{variables.$prefix}transition-speed),
+      left var(--#{variables.$prefix}transition-speed);
+
+    input.checkbox-toggle {
+      pointer-events: none;
+      opacity: 0;
+    }
+
+    &:hover {
+      box-shadow: var(--#{variables.$prefix}shadow--full);
+
+      .span-toggle {
+        @extend %instance-selected;
+      }
+    }
+
+    .span-toggle {
+      margin: calc(var(--#{variables.$prefix}controller--gutter) * .25) calc(var(--#{variables.$prefix}controller--gutter) * .125);
+      transition: opacity var(--#{variables.$prefix}transition-speed);
+    }
+
+    &--checked {
+      input[type='checkbox'] {
+        @extend %instance-selected;
+      }
+    }
+
+    &--unchecked {
+      .span-toggle {
+        opacity: 0;
+      }
+    }
+  }
+
+  // Click-drag button.
+  .click-drag-button {
+    background-color: var(--#{variables.$prefix}click-drag-button--background-color);
+    border: var(--#{variables.$prefix}click-drag-button--border);
+    border-radius: var(--#{variables.$prefix}click-drag-button--border-radius);
+    cursor: var(--#{variables.$prefix}click-drag-button--cursor);
+    height: var(--#{variables.$prefix}click-drag-button--size);
+    left: calc(#{var(--#{variables.$prefix}click-drag-button--size)} * -0.5);
+    opacity: var(--#{variables.$prefix}click-drag-button--opacity);
+    position: absolute;
+    top: var(--#{variables.$prefix}click-drag-button--top);
+    transform-origin: var(--#{variables.$prefix}click-drag-button--transform-origin);
+    transform: var(--#{variables.$prefix}click-drag-button--transform);
+    transition:
+      background-color var(--#{variables.$prefix}transition-speed),
+      transform var(--#{variables.$prefix}transition-speed);
+    width: var(--#{variables.$prefix}click-drag-button--size);
+    z-index: var(--#{variables.$prefix}click-drag-button--z-index);
+
+    body.visual-debugger--activated & {
+      background-color: var(--#{variables.$prefix}click-drag-button--background-color--on-activated);
+      cursor: var(--#{variables.$prefix}click-drag-button--cursor--on-activated);
+      opacity: var(--#{variables.$prefix}click-drag-button--opacity--on-activated);
+
+      &:hover {
+        transform: var(--#{variables.$prefix}click-drag-button--transform--on-activated--hover);
+      }
+
+      &:active {
+        background-color: var(--#{variables.$prefix}click-drag-button--background-color--on-activated--active);
+        cursor: var(--#{variables.$prefix}click-drag-button--cursor--on-activated--active);
+      }
+    }
+  }
+
+  // The content copy component.
+  .content-copy-data {
+    align-items: var(--#{variables.$prefix}content-copy-data--align-items);
+    column-gap: var(--#{variables.$prefix}content-copy-data--column-gap);
+    display: flex;
+    flex-direction: var(--#{variables.$prefix}content-copy-data--flex-direction);
+    margin: var(--#{variables.$prefix}content-copy-data--margin);
+
+    button {
+      background-color: var(--#{variables.$prefix}content-copy-data--button--background-color);
+      border: var(--#{variables.$prefix}content-copy-data--button--border);
+      cursor: pointer;
+      transition: transform var(--#{variables.$prefix}transition-speed);
+
+      &:hover {
+        transform: var(--#{variables.$prefix}content-copy-data--button--transform--hover);
+      }
+    }
+  }
+}

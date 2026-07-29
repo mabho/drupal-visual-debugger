@@ -1,0 +1,28 @@
+@use "variables";
+
+.visual-debugger {
+
+  // Checkbox toggle.
+  .checkbox-toggle {
+    cursor: pointer;
+    height: var(--#{variables.$prefix}checkbox-toggle--height);
+    opacity: var(--#{variables.$prefix}checkbox-toggle--opacity);
+    position: var(--#{variables.$prefix}checkbox-toggle--position);
+    width: var(--#{variables.$prefix}checkbox-toggle--width);
+
+    + .item-activated,
+    ~ .item-deactivated {
+      display: none;
+    }
+
+    &:checked + .item-activated,
+    &:not(:checked) ~ .item-deactivated {
+      display: inline-block;
+    }
+
+    &:not(:checked) + .item-activated,
+    &:checked + .item-deactivated {
+      display: none;
+    }
+  }
+}

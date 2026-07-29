@@ -1,0 +1,45 @@
+@use "variables";
+
+.visual-debugger {
+  .tag {
+    background-color: rgb(var(--#{variables.$prefix}color--object-type)...);
+    color: var(--#{variables.$prefix}tag--color);
+    display: var(--#{variables.$prefix}tag--display);
+    line-height: var(--#{variables.$prefix}tag--line-height);
+    padding: var(--#{variables.$prefix}tag--padding);
+
+    // Object type.
+    &--object-type {
+      @each $type, $color in variables.$object-type-colors {
+        &--#{$type} {
+          --#{variables.$prefix}color--object-type: #{$color};
+        }
+      }
+    }
+
+    // When the tag is empty.
+    &--empty {
+      background-color: var(--#{variables.$prefix}tag--empty--background-color);
+      color: var(--#{variables.$prefix}tag--empty--color);
+      font-style: var(--#{variables.$prefix}tag--empty--font-style);
+    }
+  }
+
+  .object-type {
+    background-color: rgba(var(--#{variables.$prefix}color--object-type), var(--#{variables.$prefix}object-type--transparency));
+
+    &:hover {
+      background-color: rgba(var(--#{variables.$prefix}color--object-type), var(--#{variables.$prefix}object-type--transparency--hover));
+    }
+
+    &.instance-element--checked {
+      background-color: rgba(var(--#{variables.$prefix}color--object-type), var(--#{variables.$prefix}object-type--transparency--selected));
+    }
+
+    @each $type, $color in variables.$object-type-colors {
+      &--#{$type} {
+        --#{variables.$prefix}color--object-type: #{$color};
+      }
+    }
+  }
+}
