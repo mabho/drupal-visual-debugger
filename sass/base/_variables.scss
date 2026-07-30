@@ -335,6 +335,61 @@ $icomoon-font-path: "../fonts/visual-debugger-icons/fonts";
   --#{$prefix}controller--content-auto-scroll--margin: 0;
   --#{$prefix}controller--content-auto-scroll--overflow-y: auto;
   --#{$prefix}controller--content-auto-scroll--padding: 0;
+
+  // Tabbed navigation.
+  --#{$prefix}color--gray-20--rgb: #{functions.hex-to-rgb($color--gray-20)};
+  --#{$prefix}tabbed-navigation--background-color: transparent;
+  --#{$prefix}tabbed-navigation--padding: 0;
+  --#{$prefix}tabbed-navigation--separator--height: #{functions.to-rem(35px)};
+  --#{$prefix}tabbed-navigation--margin-bottom: calc(var(--#{$prefix}tabbed-navigation--separator--height) * -1);
+  --#{$prefix}tabbed-navigation--z-index: 5;
+  --#{$prefix}tabbed-navigation--tabs--background-color: var(--#{$prefix}color--white);
+  --#{$prefix}tabbed-navigation--tabs--padding: var(--#{$prefix}controller--gutter) var(--#{$prefix}controller--gutter) 0 var(--#{$prefix}controller--gutter);
+  --#{$prefix}tabbed-navigation--separator--background: linear-gradient(to bottom, var(--#{$prefix}color--gray-20) 0%, rgba(var(--#{$prefix}color--gray-20--rgb), 0) 100%);
+
+  --#{$prefix}tabbed-navigation--tab--align-items: center;
+  --#{$prefix}tabbed-navigation--tab--background-color: var(--#{$prefix}color--gray-40);
+  --#{$prefix}tabbed-navigation--tab--border--reference: solid 1px var(--#{$prefix}color--gray-60);
+  --#{$prefix}tabbed-navigation--tab--border-bottom: 0;
+  --#{$prefix}tabbed-navigation--tab--border-left: var(--#{$prefix}tabbed-navigation--tab--border--reference);
+  --#{$prefix}tabbed-navigation--tab--border-right: var(--#{$prefix}tabbed-navigation--tab--border--reference);
+  --#{$prefix}tabbed-navigation--tab--border-top: var(--#{$prefix}tabbed-navigation--tab--border--reference);
+  --#{$prefix}tabbed-navigation--tab--border-radius: #{functions.to-rem(8px)} #{functions.to-rem(8px)} 0 0;
+  --#{$prefix}tabbed-navigation--tab--color: var(--#{$prefix}color--gray-70);
+  --#{$prefix}tabbed-navigation--tab--column-gap: calc(var(--#{$prefix}controller--gutter) * .3);
+  --#{$prefix}tabbed-navigation--tab--cursor: pointer;
+  --#{$prefix}tabbed-navigation--tab--font-size: var(--#{$prefix}controller--font-size);
+  --#{$prefix}tabbed-navigation--tab--font-weight: 500;
+  --#{$prefix}tabbed-navigation--tab--margin-right: #{functions.to-rem(-2px)};
+  --#{$prefix}tabbed-navigation--tab--padding: calc(var(--#{$prefix}controller--gutter) * .4) calc(var(--#{$prefix}controller--gutter) * .6);
+  --#{$prefix}tabbed-navigation--tab--background-color--hover: var(--#{$prefix}color--gray-30);
+  --#{$prefix}tabbed-navigation--tab--background-color--active: var(--#{$prefix}color--gray-20);
+  --#{$prefix}tabbed-navigation--tab--color--active: var(--#{$prefix}tabbed-navigation--tab--color);
+  --#{$prefix}tabbed-navigation--tab--font-weight--active: 700;
+  --#{$prefix}tabbed-navigation--tab--transform--active: translateY(#{functions.to-rem(2px)});
+  --#{$prefix}tabbed-navigation--tab--transform--not-active: translateY(#{functions.to-rem(5px)});
+  --#{$prefix}tabbed-navigation--tab--z-index--active: 5;
+  --#{$prefix}tabbed-navigation--tab--selected--size: #{functions.to-rem(10px)};
+  --#{$prefix}tabbed-navigation--tab--selected--border-radius: #{functions.to-rem(50px)};
+
+  // Target for tabbed navigation.
+  --#{$prefix}nav-target--border-top: var(--#{$prefix}tabbed-navigation--tab--border--reference);
+  --#{$prefix}nav-target--z-index: 0;
+
+  // List.
+  --#{$prefix}list-element--background-color: var(--#{$prefix}color--gray-10);
+  --#{$prefix}list-element--padding: var(--#{$prefix}controller--gutter);
+  --#{$prefix}list-element--content--flex-direction: column;
+  --#{$prefix}list-element--content--gap: calc(var(--#{$prefix}controller--gutter) * .25);
+  --#{$prefix}list-element--list-item--gap: calc(var(--#{$prefix}controller--gutter) * .25);
+  --#{$prefix}list-element--list-item--flex-direction: row;
+  --#{$prefix}list-element--list-item--line-height: 1.5;
+  --#{$prefix}list-element--list-item--activation--disabled--text-decoration: line-through;
+  --#{$prefix}list-element--list-item--activation--disabled--opacity: .65;
+  --#{$prefix}list-element--list-item--activation--font-weight: 500;
+  --#{$prefix}list-element--list-item--activation--line-height: 1.5;
+  --#{$prefix}list-element--list-item--activation--padding: 0;
+  --#{$prefix}list-element--list-item--visibility--margin-left: auto;
 }
 
 $object-type-colors: (
