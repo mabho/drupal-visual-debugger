@@ -18,6 +18,7 @@
   ],
   "scripts": {
     "build": "node build.mjs",
+    "watch": "node build.mjs --watch",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
