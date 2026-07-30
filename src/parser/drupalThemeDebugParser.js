@@ -21,9 +21,14 @@ import { LAYER_ATTRIBUTES } from '../constants.js';
 const RE_THEME_DEBUG = /THEME DEBUG/;
 const RE_TEMPLATE_HOOK = /THEME HOOK: '([^']*)'/;
 const RE_TEMPLATE_SUGGESTIONS = /FILE NAME SUGGESTIONS:\s*\n\s*([^']*)\s*\n*\s*/;
-const RE_TEMPLATE_FILE_PATH = /BEGIN OUTPUT from '([^']*)'/;
+// Drupal emits "BEGIN OUTPUT" for the default/core template, or
+// "💡 BEGIN CUSTOM TEMPLATE OUTPUT" when the active template is a
+// theme-provided override (see TwigThemeEngine::renderTwigTemplate()) —
+// i.e. almost every element on a real themed site. Both must match, or
+// every overridden template is silently dropped.
+const RE_TEMPLATE_FILE_PATH = /BEGIN(?: CUSTOM TEMPLATE)? OUTPUT from '([^']*)'/;
 // Reserved for future use (e.g. depth/nesting tracking); not consumed yet.
-const RE_TEMPLATE_END_OUTPUT = /END OUTPUT from '([^']*)'/;
+const RE_TEMPLATE_END_OUTPUT = /END(?: CUSTOM TEMPLATE)? OUTPUT from '([^']*)'/;
 
 /**
  * Walks every comment node under `root` and builds one ThemeElement per
@@ -65,7 +70,8 @@ export function parseThemeDebugElements(root = document.body) {
           .split(/\n\s*/)
           .map((line) => {
             const [flag, suggestion] = line.split(' ');
-            return { suggestion, activated: flag === 'x' };
+            // 'x' is the legacy marker; '✅' is what current Drupal core emits.
+            return { suggestion, activated: flag === 'x' || flag === '✅' };
           });
         return;
       }

@@ -306,7 +306,7 @@ export function createControllerPanel(options = {}) {
 
   function setSelectedElementTemplateFilePath() {
     const themeElement = defaultThemeElement;
-    const target = controllerLayer.querySelector(`#${IDS.controllerElementTemplateFilePath}`).parentElement;
+    const target = controllerLayer.querySelector(`#${IDS.controllerElementTemplateFilePath}`);
     target.innerHTML = '';
 
     if (themeElement === null || !themeElement.filePath) {
