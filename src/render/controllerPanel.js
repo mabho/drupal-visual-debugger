@@ -1,11 +1,12 @@
 import { CLASS_NAMES, IDS, LAYER_ATTRIBUTES, STORAGE_KEYS, DEFAULTS } from '../constants.js';
 import { webStorageAdapter } from '../storage/webStorageAdapter.js';
 import { defaultStrings } from '../i18n/defaultStrings.js';
+import { createOnOffSwitch } from './onOffSwitch.js';
 
 /**
- * Builds the fly-out inspector panel: activation toggle, active/selected
- * element info, theme suggestions, template file path, and the
- * click-drag resize handle.
+ * Builds the fly-out inspector panel: activation toggle, tabbed
+ * Selected/List views, active element info, theme suggestions, template
+ * file path, and the click-drag resize handle.
  *
  * This is a factory, not a singleton — each call returns an independent
  * instance with its own closured state, unlike the original
@@ -14,11 +15,18 @@ import { defaultStrings } from '../i18n/defaultStrings.js';
  * @param {object} [options]
  * @param {import('../storage/webStorageAdapter.js').StorageAdapter} [options.storage]
  * @param {Partial<typeof defaultStrings>} [options.strings]
+ * @param {import('../model/themeElement.js').ThemeElement[]} [options.themeElements]
+ *   Every theme element found on the page — needed to build the List tab.
+ * @param {ReturnType<typeof import('./overlayLayer.js').createOverlayEngine>} [options.overlay]
+ *   Used by the List tab to select/show/hide/hover a theme element's
+ *   overlay without going through synthetic DOM click()s.
  * @returns {object} Controller panel instance (see bottom of file for shape).
  */
 export function createControllerPanel(options = {}) {
   const storage = options.storage ?? webStorageAdapter;
   const strings = { ...defaultStrings, ...options.strings };
+  const themeElements = options.themeElements ?? [];
+  const overlay = options.overlay ?? null;
 
   let activeThemeElement = null;
   let defaultThemeElement = null;
@@ -83,10 +91,134 @@ export function createControllerPanel(options = {}) {
     return layer;
   }
 
+  function generateTabsNavigation() {
+    const nav = document.createElement('div');
+    nav.classList.add(CLASS_NAMES.tabsNavigation);
+
+    const tabsRow = document.createElement('div');
+    tabsRow.classList.add(CLASS_NAMES.tabsNavigationTabs);
+
+    const tabs = [
+      {
+        id: IDS.controllerButtonSelected,
+        label: strings.tabSelected,
+        targetId: IDS.controllerElementSelected,
+        extraClasses: [CLASS_NAMES.tabsNavigationTabSelected],
+      },
+      {
+        id: IDS.controllerButtonList,
+        label: strings.tabList,
+        targetId: IDS.controllerElementList,
+      },
+    ];
+
+    tabs.forEach((tab) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.id = tab.id;
+      button.setAttribute('data-target-tab', tab.targetId);
+      button.setAttribute('aria-label', tab.label);
+      button.classList.add(CLASS_NAMES.tabsNavigationTab, ...(tab.extraClasses || []));
+      button.textContent = tab.label;
+      button.addEventListener('click', () => switchToTab(tab.targetId));
+      tabsRow.appendChild(button);
+    });
+
+    const separator = document.createElement('div');
+    separator.classList.add(CLASS_NAMES.tabsNavigationSeparator);
+
+    nav.append(tabsRow, separator);
+    return nav;
+  }
+
+  function switchToTab(targetId) {
+    const button = controllerLayer.querySelector(`[data-target-tab="${targetId}"]`);
+    const panel = controllerLayer.querySelector(`#${targetId}`);
+    if (!button || !panel) return;
+
+    Array.from(button.parentElement.children).forEach((sibling) => {
+      sibling.classList.remove(CLASS_NAMES.tabActive);
+    });
+    button.classList.add(CLASS_NAMES.tabActive);
+
+    Array.from(panel.parentElement.children).forEach((sibling) => {
+      sibling.classList.remove(CLASS_NAMES.tabActive);
+    });
+    panel.classList.add(CLASS_NAMES.tabActive);
+  }
+
+  function generateListTab() {
+    const layer = document.createElement('div');
+    layer.id = IDS.controllerElementList;
+    layer.classList.add(CLASS_NAMES.listElement, CLASS_NAMES.navTarget);
+
+    const title = document.createElement('h3');
+    title.textContent = strings.tabList;
+
+    const content = document.createElement('div');
+    content.classList.add(CLASS_NAMES.listElementContent);
+
+    themeElements.forEach((themeElement) => {
+      content.appendChild(generateListItem(themeElement));
+    });
+
+    layer.append(title, content);
+    return layer;
+  }
+
+  function generateListItem(themeElement) {
+    const item = document.createElement('div');
+    item.classList.add(CLASS_NAMES.listItem);
+
+    const activation = createOnOffSwitch({
+      label: themeElement.propertyHook,
+      checked: false,
+      wrapperClasses: [CLASS_NAMES.listItemActivation, CLASS_NAMES.objectTypeTyped(themeElement.objectType)],
+      wrapperAttributes: { [LAYER_ATTRIBUTES.visible]: 'true' },
+      iconOn: CLASS_NAMES.iconSelectedTrue,
+      iconOff: CLASS_NAMES.iconSelectedFalse,
+    });
+
+    activation.wrapper.addEventListener('click', () => {
+      // A row hidden by a filter (Filters tab, added separately) shouldn't
+      // be selectable.
+      if (activation.wrapper.getAttribute(LAYER_ATTRIBUTES.visible) === 'true') {
+        overlay?.toggleThemeElementSelection(themeElement);
+      }
+    });
+    activation.wrapper.addEventListener('mouseenter', () => overlay?.hoverThemeElement(themeElement));
+    activation.wrapper.addEventListener('mouseleave', () => overlay?.unhoverThemeElement(themeElement));
+
+    const visibility = createOnOffSwitch({
+      checked: true,
+      wrapperClasses: [CLASS_NAMES.listItemVisibility],
+      iconOn: CLASS_NAMES.iconEye,
+      iconOff: CLASS_NAMES.iconEyeBlocked,
+    });
+
+    visibility.wrapper.addEventListener('click', () => {
+      const nextVisible = !visibility.input.checked;
+      visibility.setChecked(nextVisible);
+      activation.wrapper.classList.toggle(CLASS_NAMES.inputWrapperDisabled, !nextVisible);
+      activation.wrapper.setAttribute(LAYER_ATTRIBUTES.visible, String(nextVisible));
+      overlay?.setThemeElementVisible(themeElement, nextVisible);
+    });
+
+    // Lets the overlay engine (and Filters tab, later) sync this row's
+    // activation switch when selection changes from elsewhere.
+    themeElement.listRow = {
+      setActivated: activation.setChecked,
+    };
+
+    item.append(activation.wrapper, visibility.wrapper);
+    return item;
+  }
+
   function generateSelectedElementLayer() {
     const layer = document.createElement('div');
     const title = document.createElement('h3');
-    layer.classList.add(CLASS_NAMES.selectedElement);
+    layer.id = IDS.controllerElementSelected;
+    layer.classList.add(CLASS_NAMES.selectedElement, CLASS_NAMES.navTarget);
     title.textContent = strings.selectedElement;
 
     const infoWrapper = document.createElement('div');
@@ -157,7 +289,12 @@ export function createControllerPanel(options = {}) {
     form.classList.add(CLASS_NAMES.form);
     form.appendChild(wrapper);
 
-    content.append(generateActiveElementLayer(), generateSelectedElementLayer());
+    content.append(
+      generateActiveElementLayer(),
+      generateTabsNavigation(),
+      generateSelectedElementLayer(),
+      generateListTab(),
+    );
     layer.append(form, content);
 
     controllerLayer = layer;
@@ -362,6 +499,7 @@ export function createControllerPanel(options = {}) {
     checkControllerActivation();
     updateActiveElement();
     updateSelectedElement();
+    switchToTab(IDS.controllerElementSelected);
   }
 
   // ---- Build ----------------------------------------------------------------

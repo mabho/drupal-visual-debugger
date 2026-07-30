@@ -43,7 +43,7 @@ export function init(options = {}) {
   }
 
   const overlay = createOverlayEngine({ themeElements });
-  const panel = createControllerPanel({ storage, strings });
+  const panel = createControllerPanel({ storage, strings, themeElements, overlay });
 
   overlay.attachControllerHooks(panel);
   document.body.appendChild(overlay.baseLayer);

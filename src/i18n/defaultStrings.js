@@ -17,4 +17,6 @@ export const defaultStrings = {
   activeElement: 'Active Element',
   noActiveElement: 'No active element.',
   noSelectedElement: 'No selected element.',
+  tabSelected: 'Selected',
+  tabList: 'List',
 };

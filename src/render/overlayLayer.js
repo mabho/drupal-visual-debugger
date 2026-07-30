@@ -40,6 +40,7 @@ export function createOverlayEngine({ themeElements }) {
       CLASS_NAMES.instanceLayerUnchecked,
     );
     layer.setAttribute(LAYER_ATTRIBUTES.layerTargetId, themeElement.id);
+    layer.setAttribute(LAYER_ATTRIBUTES.visible, 'true');
     layer.style.zIndex = String(getDomDepth(themeElement.dataNode));
     positionLayer(layer, themeElement.dataNode);
 
@@ -66,30 +67,94 @@ export function createOverlayEngine({ themeElements }) {
     });
 
     layer.addEventListener('click', () => {
-      // Uncheck any other checked layer first, mirroring single-selection
-      // behavior from the original module.
-      themeElements.forEach((other) => {
-        if (other !== themeElement && other.instanceLayer.classList.contains(CLASS_NAMES.instanceLayerChecked)) {
-          other.instanceLayer.click();
-        }
-      });
-      checkbox.click();
-    });
-
-    checkbox.addEventListener('change', () => {
-      layer.classList.toggle(CLASS_NAMES.instanceLayerChecked);
-      layer.classList.toggle(CLASS_NAMES.instanceLayerUnchecked);
-
-      if (checkbox.checked) {
-        checkbox.focus();
-        controllerHooks?.setDefaultThemeElement(themeElement);
-      } else {
-        checkbox.blur();
-        controllerHooks?.resetDefaultThemeElement();
-      }
+      toggleChecked(themeElement);
     });
 
     return layer;
+  }
+
+  /**
+   * Is this theme element currently the single selected/"checked" one?
+   *
+   * @param {import('../model/themeElement.js').ThemeElement} themeElement
+   * @returns {boolean}
+   */
+  function isChecked(themeElement) {
+    return themeElement.instanceLayer.classList.contains(CLASS_NAMES.instanceLayerChecked);
+  }
+
+  /**
+   * Single source of truth for "checked" state: updates the overlay layer's
+   * own checkbox/classes, syncs the List tab row if one has registered
+   * itself (see controllerPanel.js), enforces single-selection, and
+   * notifies the controller panel. Called directly by both the overlay's
+   * own click handler and the List tab — deliberately not implemented via
+   * DOM click()-forwarding between the two, which would bounce a synthetic
+   * click back and forth between the overlay and the list row.
+   *
+   * @param {import('../model/themeElement.js').ThemeElement} themeElement
+   * @param {boolean} checked
+   */
+  function setChecked(themeElement, checked) {
+    if (checked) {
+      themeElements.forEach((other) => {
+        if (other !== themeElement && isChecked(other)) setChecked(other, false);
+      });
+    }
+
+    const layer = themeElement.instanceLayer;
+    const checkbox = layer.querySelector(`.${CLASS_NAMES.checkboxToggle}`);
+    checkbox.checked = checked;
+    layer.classList.toggle(CLASS_NAMES.instanceLayerChecked, checked);
+    layer.classList.toggle(CLASS_NAMES.instanceLayerUnchecked, !checked);
+    if (checked) checkbox.focus();
+    else checkbox.blur();
+
+    themeElement.listRow?.setActivated(checked);
+
+    if (checked) controllerHooks?.setDefaultThemeElement(themeElement);
+    else controllerHooks?.resetDefaultThemeElement();
+  }
+
+  /**
+   * @param {import('../model/themeElement.js').ThemeElement} themeElement
+   */
+  function toggleChecked(themeElement) {
+    setChecked(themeElement, !isChecked(themeElement));
+  }
+
+  /**
+   * Shows or hides a theme element's overlay layer. Deactivates it first
+   * if it was the selected one, mirroring the original module's
+   * hideInstanceLayer().
+   *
+   * @param {import('../model/themeElement.js').ThemeElement} themeElement
+   * @param {boolean} visible
+   */
+  function setVisible(themeElement, visible) {
+    if (!visible && isChecked(themeElement)) setChecked(themeElement, false);
+    themeElement.instanceLayer.setAttribute(LAYER_ATTRIBUTES.visible, String(visible));
+  }
+
+  /**
+   * Synthetic hover, for use by the List (and Filters) tab: a real mouse
+   * hover on the overlay itself is covered by CSS `:hover`, but hovering a
+   * list row doesn't put the mouse over the overlay, so its highlight has
+   * to be toggled explicitly.
+   *
+   * @param {import('../model/themeElement.js').ThemeElement} themeElement
+   */
+  function hoverThemeElement(themeElement) {
+    themeElement.instanceLayer.classList.add(CLASS_NAMES.instanceLayerHover, CLASS_NAMES.objectTypeHover);
+    controllerHooks?.setActiveThemeElement(themeElement);
+  }
+
+  /**
+   * @param {import('../model/themeElement.js').ThemeElement} themeElement
+   */
+  function unhoverThemeElement(themeElement) {
+    themeElement.instanceLayer.classList.remove(CLASS_NAMES.instanceLayerHover, CLASS_NAMES.objectTypeHover);
+    controllerHooks?.resetActiveThemeElement();
   }
 
   /**
@@ -149,6 +214,11 @@ export function createOverlayEngine({ themeElements }) {
     attachControllerHooks(hooks) {
       controllerHooks = hooks;
     },
+    isThemeElementSelected: isChecked,
+    toggleThemeElementSelection: toggleChecked,
+    setThemeElementVisible: setVisible,
+    hoverThemeElement,
+    unhoverThemeElement,
   };
 }
 
