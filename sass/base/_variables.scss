@@ -66,9 +66,6 @@ $color--gray: gray;
 // Color utilities.
 $color--shadow: $color--gray;
 
-// Conf
-$icomoon-font-path: "../fonts/visual-debugger-icons/fonts";
-
 .visual-debugger {
   // Conf
   --#{$prefix}z-index--base: 10000;
@@ -397,14 +394,12 @@ $icomoon-font-path: "../fonts/visual-debugger-icons/fonts";
   --#{$prefix}filters-element--padding: var(--#{$prefix}controller--gutter);
   --#{$prefix}filters-element--content--flex-direction: column;
   --#{$prefix}filters-element--content--gap: calc(var(--#{$prefix}controller--gutter) * .25);
-  --#{$prefix}filters-element--filter-item--align-items: center;
-  --#{$prefix}filters-element--filter-item--flex-direction: row-reverse;
-  --#{$prefix}filters-element--filter-item--gap: calc(var(--#{$prefix}controller--gutter) * .25);
-  --#{$prefix}filters-element--filter-item--justify-content: flex-start;
-  --#{$prefix}filters-element--filter-item--activation--align-items: flex-start;
+  --#{$prefix}filters-element--filter-item--activation--align-items: center;
+  --#{$prefix}filters-element--filter-item--activation--cursor: pointer;
   --#{$prefix}filters-element--filter-item--activation--font-weight: 500;
   --#{$prefix}filters-element--filter-item--activation--line-height: 1.5;
   --#{$prefix}filters-element--filter-item--activation--justify-content: space-between;
+  --#{$prefix}filters-element--filter-item--activation--padding: 0 calc(var(--#{$prefix}controller--gutter) * .5);
 }
 
 $object-type-colors: (

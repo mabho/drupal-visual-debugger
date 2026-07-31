@@ -3,7 +3,6 @@
 @use "base/types";
 @use "base/icons";
 @use "base/form";
-@use "../fonts/visual-debugger-icons/style.scss";
 
 %instance-selected {
   opacity: 1;
@@ -311,16 +310,14 @@
       }
 
       &-item {
-        align-items: var(--#{variables.$prefix}filters-element--filter-item--align-items);
-        display: flex;
-        flex-direction: var(--#{variables.$prefix}filters-element--filter-item--flex-direction);
-        gap: var(--#{variables.$prefix}filters-element--filter-item--gap);
-        justify-content: var(--#{variables.$prefix}filters-element--filter-item--justify-content);
-
         &__activation {
           align-items: var(--#{variables.$prefix}filters-element--filter-item--activation--align-items);
+          cursor: var(--#{variables.$prefix}filters-element--filter-item--activation--cursor);
+          display: flex;
           font-weight: var(--#{variables.$prefix}filters-element--filter-item--activation--font-weight);
           justify-content: var(--#{variables.$prefix}filters-element--filter-item--activation--justify-content);
+          padding: var(--#{variables.$prefix}filters-element--filter-item--activation--padding);
+          transition: background-color var(--#{variables.$prefix}transition-speed);
 
           &[data-vd-visible='false'] {
             opacity: var(--#{variables.$prefix}list-element--list-item--activation--disabled--opacity);
@@ -333,15 +330,6 @@
             padding: var(--#{variables.$prefix}list-element--list-item--activation--padding);
             position: relative;
             transition: background-color var(--#{variables.$prefix}transition-speed);
-          }
-
-          &--hover,
-          &:hover {
-            &[data-vd-visible='true'] {
-              label {
-                background-color: rgba(var(--#{variables.$prefix}color--object-type), var(--#{variables.$prefix}object-type--transparency--hover));
-              }
-            }
           }
         }
       }
