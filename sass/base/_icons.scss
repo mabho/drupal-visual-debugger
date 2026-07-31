@@ -7,6 +7,17 @@
     font-size: var(--#{variables.$prefix}icon--font-size);
   }
 
+  // Prepares an icon layer to be displayed within content (e.g. the
+  // Filters tab's per-type color swatch, before its label).
+  .icon-within-content {
+    line-height: 1.5;
+  }
+
+  .icon-square {
+    font-size: var(--#{variables.$prefix}icon--font-size--x-small);
+    line-height: 1.5;
+  }
+
   .icon-selected-true,
   .icon-selected-false,
   .icon-slide-resize,

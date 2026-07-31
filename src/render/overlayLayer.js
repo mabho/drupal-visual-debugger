@@ -134,6 +134,7 @@ export function createOverlayEngine({ themeElements }) {
   function setVisible(themeElement, visible) {
     if (!visible && isChecked(themeElement)) setChecked(themeElement, false);
     themeElement.instanceLayer.setAttribute(LAYER_ATTRIBUTES.visible, String(visible));
+    themeElement.listRow?.setVisible(visible);
   }
 
   /**

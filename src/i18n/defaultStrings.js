@@ -19,4 +19,6 @@ export const defaultStrings = {
   noSelectedElement: 'No selected element.',
   tabSelected: 'Selected',
   tabList: 'List',
+  tabFilters: 'Filters',
+  allElements: 'All Elements',
 };

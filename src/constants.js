@@ -81,6 +81,16 @@ export const CLASS_NAMES = {
   listItemActivation: 'list-item__activation',
   listItemActivationHover: 'list-item__activation--hover',
   listItemVisibility: 'list-item__visibility',
+
+  // Filters tab.
+  filtersElement: 'filters',
+  filtersElementContent: 'filters__content',
+  filtersElementItem: 'filters-item',
+  filtersElementItemSelectAll: 'filters-item--select-all',
+  filtersElementItemActivation: 'filters-item__activation',
+  filtersElementItemActivationHover: 'filter-item__activation--hover',
+  iconSquare: 'icon-square',
+  iconWithinContent: 'icon-within-content',
 };
 
 export const IDS = {
@@ -93,6 +103,8 @@ export const IDS = {
   controllerElementSelected: 'visual-debugger--controller-layer--selected',
   controllerButtonList: 'visual-debugger--controller-layer--button--list',
   controllerElementList: 'visual-debugger--controller-layer--list',
+  controllerButtonFilters: 'visual-debugger--controller-layer--button--filters',
+  controllerElementFilters: 'visual-debugger--controller-layer--filters',
 };
 
 export const LAYER_ATTRIBUTES = {

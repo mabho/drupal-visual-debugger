@@ -298,6 +298,54 @@
         }
       }
     }
+
+    // Filters group.
+    .filters {
+      background-color: var(--#{variables.$prefix}filters-element--background-color);
+      padding: var(--#{variables.$prefix}filters-element--padding);
+
+      &__content {
+        display: flex;
+        flex-direction: var(--#{variables.$prefix}filters-element--content--flex-direction);
+        gap: var(--#{variables.$prefix}filters-element--content--gap);
+      }
+
+      &-item {
+        align-items: var(--#{variables.$prefix}filters-element--filter-item--align-items);
+        display: flex;
+        flex-direction: var(--#{variables.$prefix}filters-element--filter-item--flex-direction);
+        gap: var(--#{variables.$prefix}filters-element--filter-item--gap);
+        justify-content: var(--#{variables.$prefix}filters-element--filter-item--justify-content);
+
+        &__activation {
+          align-items: var(--#{variables.$prefix}filters-element--filter-item--activation--align-items);
+          font-weight: var(--#{variables.$prefix}filters-element--filter-item--activation--font-weight);
+          justify-content: var(--#{variables.$prefix}filters-element--filter-item--activation--justify-content);
+
+          &[data-vd-visible='false'] {
+            opacity: var(--#{variables.$prefix}list-element--list-item--activation--disabled--opacity);
+            text-decoration: var(--#{variables.$prefix}list-element--list-item--activation--disabled--text-decoration);
+          }
+
+          label {
+            flex-grow: 1;
+            line-height: var(--#{variables.$prefix}filters-element--filter-item--activation--line-height);
+            padding: var(--#{variables.$prefix}list-element--list-item--activation--padding);
+            position: relative;
+            transition: background-color var(--#{variables.$prefix}transition-speed);
+          }
+
+          &--hover,
+          &:hover {
+            &[data-vd-visible='true'] {
+              label {
+                background-color: rgba(var(--#{variables.$prefix}color--object-type), var(--#{variables.$prefix}object-type--transparency--hover));
+              }
+            }
+          }
+        }
+      }
+    }
   }
 
   // Base layer.

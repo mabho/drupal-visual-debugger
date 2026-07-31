@@ -20,6 +20,8 @@ import { CLASS_NAMES } from '../constants.js';
  * @param {boolean} [options.labelFirst] Place the label after the icons (true) or before (false).
  * @param {string} options.iconOn Icon class shown when checked.
  * @param {string} options.iconOff Icon class shown when unchecked.
+ * @param {string} [options.iconBullet] Extra static icon class prepended before everything
+ *   else (used by the Filters tab for its per-type color swatch).
  * @returns {{ wrapper: Element, input: Element, setChecked: (checked: boolean) => void }}
  */
 export function createOnOffSwitch({
@@ -30,6 +32,7 @@ export function createOnOffSwitch({
   labelFirst = true,
   iconOn,
   iconOff,
+  iconBullet,
 } = {}) {
   const wrapper = document.createElement('div');
   Object.entries(wrapperAttributes).forEach(([key, value]) => {
@@ -69,6 +72,10 @@ export function createOnOffSwitch({
     } else {
       wrapper.insertBefore(labelEl, wrapper.firstChild);
     }
+  }
+
+  if (iconBullet) {
+    wrapper.insertBefore(makeIcon(iconBullet, CLASS_NAMES.iconWithinContent), wrapper.firstChild);
   }
 
   function setChecked(value) {

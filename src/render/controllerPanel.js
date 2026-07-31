@@ -110,6 +110,11 @@ export function createControllerPanel(options = {}) {
         label: strings.tabList,
         targetId: IDS.controllerElementList,
       },
+      {
+        id: IDS.controllerButtonFilters,
+        label: strings.tabFilters,
+        targetId: IDS.controllerElementFilters,
+      },
     ];
 
     tabs.forEach((tab) => {
@@ -196,22 +201,117 @@ export function createControllerPanel(options = {}) {
       iconOff: CLASS_NAMES.iconEyeBlocked,
     });
 
+    // Syncs this row's own visibility switch + disabled look, without
+    // touching the overlay — used both by this row's own click (which also
+    // tells the overlay) and by listRow.setVisible (called BY the overlay
+    // when visibility changes elsewhere, e.g. the Filters tab).
+    function applyVisible(visible) {
+      visibility.setChecked(visible);
+      activation.wrapper.classList.toggle(CLASS_NAMES.inputWrapperDisabled, !visible);
+      activation.wrapper.setAttribute(LAYER_ATTRIBUTES.visible, String(visible));
+    }
+
     visibility.wrapper.addEventListener('click', () => {
       const nextVisible = !visibility.input.checked;
-      visibility.setChecked(nextVisible);
-      activation.wrapper.classList.toggle(CLASS_NAMES.inputWrapperDisabled, !nextVisible);
-      activation.wrapper.setAttribute(LAYER_ATTRIBUTES.visible, String(nextVisible));
+      applyVisible(nextVisible);
       overlay?.setThemeElementVisible(themeElement, nextVisible);
     });
 
-    // Lets the overlay engine (and Filters tab, later) sync this row's
-    // activation switch when selection changes from elsewhere.
+    // Lets the overlay engine (and Filters tab) sync this row's activation
+    // switch and visibility switch when either changes from elsewhere.
     themeElement.listRow = {
       setActivated: activation.setChecked,
+      setVisible: applyVisible,
     };
 
     item.append(activation.wrapper, visibility.wrapper);
     return item;
+  }
+
+  function generateFiltersTab() {
+    const layer = document.createElement('div');
+    layer.id = IDS.controllerElementFilters;
+    layer.classList.add(CLASS_NAMES.filtersElement, CLASS_NAMES.navTarget);
+
+    const title = document.createElement('h3');
+    title.textContent = strings.tabFilters;
+
+    const content = document.createElement('div');
+    content.classList.add(CLASS_NAMES.filtersElementContent);
+
+    // Group by object type, preserving first-seen order.
+    const groups = new Map();
+    themeElements.forEach((themeElement) => {
+      if (!groups.has(themeElement.objectType)) groups.set(themeElement.objectType, []);
+      groups.get(themeElement.objectType).push(themeElement);
+    });
+
+    // A filter switch is a pure batch action: it always shows the state you
+    // last set it to, and setting it shows/hides every member element. It
+    // deliberately doesn't try to track whether members have since drifted
+    // out of sync via individual List-tab toggles.
+    function applyFilterVisible(filterSwitch, members, visible) {
+      filterSwitch.setChecked(visible);
+      filterSwitch.wrapper.setAttribute(LAYER_ATTRIBUTES.visible, String(visible));
+      members.forEach((themeElement) => overlay?.setThemeElementVisible(themeElement, visible));
+    }
+
+    const filterGroups = [];
+
+    groups.forEach((members, type) => {
+      const item = document.createElement('div');
+      item.classList.add(CLASS_NAMES.filtersElementItem);
+
+      const filterSwitch = createOnOffSwitch({
+        label: `${type} - (${members.length})`,
+        checked: true,
+        wrapperClasses: [CLASS_NAMES.filtersElementItemActivation, CLASS_NAMES.objectType, CLASS_NAMES.objectTypeTyped(type)],
+        wrapperAttributes: { [LAYER_ATTRIBUTES.visible]: 'true' },
+        iconOn: CLASS_NAMES.iconEye,
+        iconOff: CLASS_NAMES.iconEyeBlocked,
+        iconBullet: CLASS_NAMES.iconSquare,
+        labelFirst: false,
+      });
+
+      filterSwitch.wrapper.addEventListener('click', () => {
+        applyFilterVisible(filterSwitch, members, !filterSwitch.input.checked);
+      });
+      filterSwitch.wrapper.addEventListener('mouseenter', () => {
+        filterSwitch.wrapper.classList.add(CLASS_NAMES.filtersElementItemActivationHover);
+        members.forEach((themeElement) => overlay?.hoverThemeElement(themeElement));
+      });
+      filterSwitch.wrapper.addEventListener('mouseleave', () => {
+        filterSwitch.wrapper.classList.remove(CLASS_NAMES.filtersElementItemActivationHover);
+        members.forEach((themeElement) => overlay?.unhoverThemeElement(themeElement));
+      });
+
+      filterGroups.push({ filterSwitch, members });
+      item.appendChild(filterSwitch.wrapper);
+      content.appendChild(item);
+    });
+
+    const allItem = document.createElement('div');
+    allItem.classList.add(CLASS_NAMES.filtersElementItemSelectAll);
+
+    const allSwitch = createOnOffSwitch({
+      label: strings.allElements,
+      checked: true,
+      wrapperClasses: [CLASS_NAMES.filtersElementItemActivation],
+      iconOn: CLASS_NAMES.iconEye,
+      iconOff: CLASS_NAMES.iconEyeBlocked,
+    });
+
+    allSwitch.wrapper.addEventListener('click', () => {
+      const next = !allSwitch.input.checked;
+      allSwitch.setChecked(next);
+      filterGroups.forEach(({ filterSwitch, members }) => applyFilterVisible(filterSwitch, members, next));
+    });
+
+    allItem.appendChild(allSwitch.wrapper);
+    content.prepend(allItem);
+
+    layer.append(title, content);
+    return layer;
   }
 
   function generateSelectedElementLayer() {
@@ -294,6 +394,7 @@ export function createControllerPanel(options = {}) {
       generateTabsNavigation(),
       generateSelectedElementLayer(),
       generateListTab(),
+      generateFiltersTab(),
     );
     layer.append(form, content);
 

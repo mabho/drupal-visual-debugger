@@ -36,6 +36,11 @@
       background-color: rgba(var(--#{variables.$prefix}color--object-type), var(--#{variables.$prefix}object-type--transparency--selected));
     }
 
+    // Filters tab's per-type color swatch.
+    &.filters-item__activation > .icon-square {
+      color: rgba(var(--#{variables.$prefix}color--object-type), 1);
+    }
+
     @each $type, $color in variables.$object-type-colors {
       &--#{$type} {
         --#{variables.$prefix}color--object-type: #{$color};
