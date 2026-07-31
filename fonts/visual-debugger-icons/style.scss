@@ -1,11 +1,11 @@
-@use "variables";
+@import "variables";
 
 @font-face {
-  font-family: '#{variables.$icomoon-font-family}';
+  font-family: '#{$icomoon-font-family}';
   src:
-    url('#{variables.$icomoon-font-path}/#{variables.$icomoon-font-family}.ttf?6bmvws') format('truetype'),
-    url('#{variables.$icomoon-font-path}/#{variables.$icomoon-font-family}.woff?6bmvws') format('woff'),
-    url('#{variables.$icomoon-font-path}/#{variables.$icomoon-font-family}.svg?6bmvws##{variables.$icomoon-font-family}') format('svg');
+    url('#{$icomoon-font-path}/#{$icomoon-font-family}.ttf?y3g3j') format('truetype'),
+    url('#{$icomoon-font-path}/#{$icomoon-font-family}.woff?y3g3j') format('woff'),
+    url('#{$icomoon-font-path}/#{$icomoon-font-family}.svg?y3g3j##{$icomoon-font-family}') format('svg');
   font-weight: normal;
   font-style: normal;
   font-display: block;
@@ -13,7 +13,7 @@
 
 [class^="icon-"], [class*=" icon-"] {
   /* use !important to prevent issues with browser extensions that change fonts */
-  font-family: '#{variables.$icomoon-font-family}' !important;
+  font-family: '#{$icomoon-font-family}' !important;
   speak: never;
   font-style: normal;
   font-weight: normal;
@@ -26,54 +26,64 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-.icon-toggle-on {
-  &:before {
-    content: variables.$icon-toggle-on; 
-  }
-}
-.icon-toggle-off {
-  &:before {
-    content: variables.$icon-toggle-off; 
-  }
-}
 .icon-slide-resize {
   &:before {
-    content: variables.$icon-slide-resize; 
+    content: $icon-slide-resize; 
   }
 }
 .icon-selected-false {
   &:before {
-    content: variables.$icon-selected-false; 
+    content: $icon-selected-false; 
   }
 }
 .icon-selected-true {
   &:before {
-    content: variables.$icon-selected-true; 
+    content: $icon-selected-true; 
+  }
+}
+.icon-navigate-next {
+  &:before {
+    content: $icon-navigate-next; 
   }
 }
 .icon-copy {
   &:before {
-    content: variables.$icon-copy; 
+    content: $icon-copy; 
   }
 }
 .icon-eye {
   &:before {
-    content: variables.$icon-eye; 
+    content: $icon-eye; 
   }
 }
 .icon-eye-blocked {
   &:before {
-    content: variables.$icon-eye-blocked; 
+    content: $icon-eye-blocked; 
   }
 }
 .icon-checkbox-checked {
   &:before {
-    content: variables.$icon-checkbox-checked; 
+    content: $icon-checkbox-checked; 
   }
 }
 .icon-checkbox-unchecked {
   &:before {
-    content: variables.$icon-checkbox-unchecked; 
+    content: $icon-checkbox-unchecked; 
+  }
+}
+.icon-square {
+  &:before {
+    content: $icon-square; 
+  }
+}
+.icon-toggle-on {
+  &:before {
+    content: $icon-toggle-on; 
+  }
+}
+.icon-toggle-off {
+  &:before {
+    content: $icon-toggle-off; 
   }
 }
 

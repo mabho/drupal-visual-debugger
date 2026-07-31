@@ -1,15 +1,16 @@
-@use "sass:string";
-
 $icomoon-font-family: "visual-debugger-icons" !default;
 $icomoon-font-path: "fonts" !default;
 
-$icon-toggle-on: string.unquote('"\\e903"');
-$icon-toggle-off: string.unquote('"\\e905"');
-$icon-slide-resize: string.unquote('"\\e904"');
-$icon-selected-false: string.unquote('"\\e901"');
-$icon-selected-true: string.unquote('"\\e902"');
-$icon-copy: string.unquote('"\\e900"');
-$icon-eye: string.unquote('"\\e9ce"');
-$icon-eye-blocked: string.unquote('"\\e9d1"');
-$icon-checkbox-checked: string.unquote('"\\ea52"');
-$icon-checkbox-unchecked: string.unquote('"\\ea53"');
+$icon-slide-resize: unquote('"\\e904"');
+$icon-selected-false: unquote('"\\e901"');
+$icon-selected-true: unquote('"\\e902"');
+$icon-navigate-next: unquote('"\\e908"');
+$icon-copy: unquote('"\\e900"');
+$icon-eye: unquote('"\\e9ce"');
+$icon-eye-blocked: unquote('"\\e9d1"');
+$icon-checkbox-checked: unquote('"\\ea52"');
+$icon-checkbox-unchecked: unquote('"\\ea53"');
+$icon-square: unquote('"\\e906"');
+$icon-toggle-on: unquote('"\\e903"');
+$icon-toggle-off: unquote('"\\e905"');
+
