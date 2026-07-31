@@ -53,8 +53,18 @@ function buildStyles() {
   });
   writeFileSync('dist/visual-debugger.min.css', cssMinResult.css);
 
-  // Copy the icon font files alongside the compiled CSS — the CSS's
-  // @font-face src URLs are relative to dist/, e.g. "fonts/visual-debugger-icons.ttf".
+  // The icon font (fonts/visual-debugger-icons/) is a vendored IcoMoon
+  // package. Its .scss uses legacy @import + unnamespaced variable
+  // overrides (the pre-@use way of parameterizing a partial), which isn't
+  // worth adapting to this project's @use-based Dart Sass setup just to
+  // re-emit the same handful of @font-face/content rules IcoMoon already
+  // compiled. So instead of feeding its .scss into the Sass compile above,
+  // we copy its precompiled style.css over as-is. See README "Icon font".
+  cpSync('fonts/visual-debugger-icons/style.css', 'dist/visual-debugger.fonts.css');
+
+  // Copy the icon font binaries alongside the compiled CSS — both
+  // visual-debugger.fonts.css's and the IcoMoon demo's @font-face src URLs
+  // are relative, e.g. "fonts/visual-debugger-icons.ttf".
   cpSync('fonts/visual-debugger-icons/fonts', 'dist/fonts', { recursive: true });
 }
 
@@ -94,6 +104,6 @@ if (watch) {
   buildStyles();
 
   console.log(
-    'Build complete: dist/visual-debugger.{esm,cjs,global,global.min}.js, dist/visual-debugger.{css,min.css}, dist/fonts'
+    'Build complete: dist/visual-debugger.{esm,cjs,global,global.min}.js, dist/visual-debugger.{css,min.css,fonts.css}, dist/fonts'
   );
 }
