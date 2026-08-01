@@ -36,13 +36,12 @@ const RE_TEMPLATE_END_OUTPUT = /END(?: CUSTOM TEMPLATE)? OUTPUT from '([^']*)'/;
  *
  * Implementation note: uses a `TreeWalker` filtered to `SHOW_COMMENT`
  * rather than `root.querySelectorAll('*')` + inspecting every element's
- * `childNodes`. The`whatToShow` filter is native — the browser skips
- * non-comment nodes
- * without invoking any JS — so this never materializes a collection of
- * every element/child node in the subtree the way the querySelectorAll
- * approach did, and it correctly finds comments that are direct children
- * of `root` itself (querySelectorAll('*') never includes `root`, so a
- * top-level comment would've been silently missed).
+ * `childNodes`. The `whatToShow` filter is native — the browser skips
+ * non-comment nodes without invoking any JS — so this never materializes
+ * a collection of every element/child node in the subtree the way the
+ * querySelectorAll approach did, and it correctly finds comments that are
+ * direct children of `root` itself (querySelectorAll('*') never includes
+ * `root`, so a top-level comment would've been silently missed).
  *
  * Each comment is tested against the module-level regexes in turn;
  * matching `THEME DEBUG` flips on an `activated` flag that gates all
