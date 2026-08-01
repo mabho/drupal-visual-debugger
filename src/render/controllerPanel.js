@@ -570,6 +570,23 @@ export function createControllerPanel(options = {}) {
     setElementInfo(defaultThemeElement, layer, 'selected');
     setSelectedElementSuggestions();
     setSelectedElementTemplateFilePath();
+    setTabCue();
+  }
+
+  // Colors the "Selected" tab's ::before dot to match the selected
+  // element's object type, via the same --color--object-type cascade the
+  // overlay/list/filter rows use (see base/_types.scss).
+  function setTabCue() {
+    const button = controllerLayer.querySelector(`#${IDS.controllerButtonSelected}`);
+    if (!button) return;
+
+    const emptyObjectTypeClass = CLASS_NAMES.objectTypeTyped('');
+    Array.from(button.classList).forEach((className) => {
+      if (className.startsWith(emptyObjectTypeClass)) button.classList.remove(className);
+    });
+
+    if (defaultThemeElement === null) return;
+    button.classList.add(CLASS_NAMES.objectTypeTyped(defaultThemeElement.objectType));
   }
 
   // ---- Public hooks (consumed by the overlay engine) ------------------------
