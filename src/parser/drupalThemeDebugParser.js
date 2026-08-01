@@ -34,11 +34,17 @@ const RE_TEMPLATE_END_OUTPUT = /END(?: CUSTOM TEMPLATE)? OUTPUT from '([^']*)'/;
  * Walks every comment node under `root` and builds one ThemeElement per
  * "THEME DEBUG ... BEGIN OUTPUT" block that resolves to a real DOM element.
  *
- * Implementation note: `root.querySelectorAll('*')` only returns Element
- * nodes, so comment nodes are found by then walking each element's own
- * `childNodes` — this still visits every comment in document order because
- * every comment in Drupal's debug output is a child of some element under
- * `root`. Each comment is tested against the module-level regexes in turn;
+ * Implementation note: uses a `TreeWalker` filtered to `SHOW_COMMENT`
+ * rather than `root.querySelectorAll('*')` + inspecting every element's
+ * `childNodes`. The`whatToShow` filter is native — the browser skips
+ * non-comment nodes
+ * without invoking any JS — so this never materializes a collection of
+ * every element/child node in the subtree the way the querySelectorAll
+ * approach did, and it correctly finds comments that are direct children
+ * of `root` itself (querySelectorAll('*') never includes `root`, so a
+ * top-level comment would've been silently missed).
+ *
+ * Each comment is tested against the module-level regexes in turn;
  * matching `THEME DEBUG` flips on an `activated` flag that gates all
  * subsequent matches until a `BEGIN OUTPUT` comment is found (successful or
  * not — see `drupalThemeDebugParser.js`'s file-level comment for why both
@@ -60,60 +66,66 @@ export function parseThemeDebugElements(root = document.body) {
   let current = createEmptyThemeElement();
   let activated = false;
 
-  const allNodes = root.querySelectorAll('*');
+  const treeWalker = document.createTreeWalker(root, NodeFilter.SHOW_COMMENT);
 
-  allNodes.forEach((node) => {
-    Array.from(node.childNodes).forEach((child) => {
-      if (child.nodeType !== Node.COMMENT_NODE) return;
-      const text = child.textContent;
+  let child = treeWalker.nextNode();
+  while (child) {
+    const text = child.textContent;
 
-      if (RE_THEME_DEBUG.test(text)) {
-        activated = true;
-        return;
+    if (RE_THEME_DEBUG.test(text)) {
+      activated = true;
+      child = treeWalker.nextNode();
+      continue;
+    }
+
+    if (!activated) {
+      child = treeWalker.nextNode();
+      continue;
+    }
+
+    const hookMatch = text.match(RE_TEMPLATE_HOOK);
+    if (hookMatch) {
+      current.propertyHook = hookMatch[1];
+      current.objectType = hookMatch[1].split('__')[0];
+      child = treeWalker.nextNode();
+      continue;
+    }
+
+    const suggestionsMatch = text.match(RE_TEMPLATE_SUGGESTIONS);
+    if (suggestionsMatch) {
+      current.suggestions = suggestionsMatch[1]
+        .trim()
+        .split(/\n\s*/)
+        .map((line) => {
+          const [flag, suggestion] = line.split(' ');
+          // 'x' is the legacy marker; '✅' is what current Drupal core emits.
+          return { suggestion, activated: flag === 'x' || flag === '✅' };
+        });
+      child = treeWalker.nextNode();
+      continue;
+    }
+
+    const filePathMatch = text.match(RE_TEMPLATE_FILE_PATH);
+    if (filePathMatch) {
+      current.filePath = filePathMatch[1];
+
+      const dataNode = child.nextElementSibling;
+      const alreadyMatched = current.dataNode !== null;
+
+      if (dataNode && dataNode.nodeType === Node.ELEMENT_NODE && !alreadyMatched) {
+        current.dataNode = dataNode;
+        current.id = `element-${Math.random().toString(36).substring(7)}`;
+        dataNode.setAttribute(LAYER_ATTRIBUTES.layerId, current.id);
+        themeElements.push(current);
       }
 
-      if (!activated) return;
+      // Start fresh for the next block.
+      current = createEmptyThemeElement();
+      activated = false;
+    }
 
-      const hookMatch = text.match(RE_TEMPLATE_HOOK);
-      if (hookMatch) {
-        current.propertyHook = hookMatch[1];
-        current.objectType = hookMatch[1].split('__')[0];
-        return;
-      }
-
-      const suggestionsMatch = text.match(RE_TEMPLATE_SUGGESTIONS);
-      if (suggestionsMatch) {
-        current.suggestions = suggestionsMatch[1]
-          .trim()
-          .split(/\n\s*/)
-          .map((line) => {
-            const [flag, suggestion] = line.split(' ');
-            // 'x' is the legacy marker; '✅' is what current Drupal core emits.
-            return { suggestion, activated: flag === 'x' || flag === '✅' };
-          });
-        return;
-      }
-
-      const filePathMatch = text.match(RE_TEMPLATE_FILE_PATH);
-      if (filePathMatch) {
-        current.filePath = filePathMatch[1];
-
-        const dataNode = child.nextElementSibling;
-        const alreadyMatched = current.dataNode !== null;
-
-        if (dataNode && dataNode.nodeType === Node.ELEMENT_NODE && !alreadyMatched) {
-          current.dataNode = dataNode;
-          current.id = `element-${Math.random().toString(36).substring(7)}`;
-          dataNode.setAttribute(LAYER_ATTRIBUTES.layerId, current.id);
-          themeElements.push(current);
-        }
-
-        // Start fresh for the next block.
-        current = createEmptyThemeElement();
-        activated = false;
-      }
-    });
-  });
+    child = treeWalker.nextNode();
+  }
 
   return themeElements;
 }
