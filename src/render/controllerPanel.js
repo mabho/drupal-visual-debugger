@@ -14,7 +14,11 @@ import { createOnOffSwitch } from './onOffSwitch.js';
  *
  * @param {object} [options]
  * @param {import('../storage/webStorageAdapter.js').StorageAdapter} [options.storage]
- * @param {Partial<typeof defaultStrings>} [options.strings]
+ *   Persistence for the activation toggle and panel width. Defaults to
+ *   `webStorageAdapter` (`localStorage`); pass `createMemoryStorageAdapter()`
+ *   or a `chrome.storage`-backed adapter in other hosting contexts.
+ * @param {Partial<typeof defaultStrings>} [options.strings] Overrides
+ *   merged over `defaultStrings` — e.g. `Drupal.t()`-resolved translations.
  * @param {import('../model/themeElement.js').ThemeElement[]} [options.themeElements]
  *   Every theme element found on the page — needed to build the List tab.
  * @param {ReturnType<typeof import('./overlayLayer.js').createOverlayEngine>} [options.overlay]
@@ -32,12 +36,32 @@ export function createControllerPanel(options = {}) {
   let defaultThemeElement = null;
   let controllerLayer = null;
 
+  /**
+   * The theme element the "Selected Element" panel should currently show:
+   * whatever's hovered takes priority over whatever's clicked/selected, and
+   * `null` if neither is set.
+   *
+   * @returns {import('../model/themeElement.js').ThemeElement|null}
+   */
   function getSelectedThemeElement() {
     return activeThemeElement || defaultThemeElement || null;
   }
 
   // ---- DOM builders ------------------------------------------------------
 
+  /**
+   * Builds a labeled `<input readonly>` + copy-to-clipboard button row,
+   * used for theme suggestions and the template file path.
+   *
+   * @param {string|null} itemLabel Visible label text, or `null` for none
+   *   (e.g. suggestion rows, which use an icon instead of a text label).
+   * @param {string} itemLabelClass Class added to the label wrapper —
+   *   either a text-label style class or an icon class when `itemLabel` is
+   *   `null`.
+   * @param {string} itemContent The value shown in the (read-only) input
+   *   and copied to the clipboard on click.
+   * @returns {Element} The row wrapper, not yet attached to the DOM.
+   */
   function generateContentCopyData(itemLabel, itemLabelClass, itemContent) {
     const itemWrapper = document.createElement('div');
     const itemLabelWrapper = document.createElement('div');
@@ -58,6 +82,14 @@ export function createControllerPanel(options = {}) {
     return itemWrapper;
   }
 
+  /**
+   * Copies a read-only input's value to the clipboard, preferring the
+   * async Clipboard API and falling back to `document.execCommand('copy')`
+   * (via select-and-copy) where it's unavailable.
+   *
+   * @param {Element} contentRefField The `<input readonly>` whose value to copy.
+   * @returns {void}
+   */
   function clipboardCopy(contentRefField) {
     const textToCopy = contentRefField.value;
     if (navigator.clipboard) {
@@ -69,6 +101,14 @@ export function createControllerPanel(options = {}) {
     }
   }
 
+  /**
+   * Builds the "nothing to show" placeholder tag used across the Active
+   * Element / Selected Element panels.
+   *
+   * @param {string} infoType Which empty message to show: `'active'` for
+   *   `strings.noActiveElement`, anything else for `strings.noSelectedElement`.
+   * @returns {Element} The empty-state tag, not yet attached to the DOM.
+   */
   function generateEmptyTag(infoType) {
     const wrapper = document.createElement('div');
     wrapper.classList.add(CLASS_NAMES.elementInfoTextContent, CLASS_NAMES.elementInfoEmpty);
@@ -76,6 +116,13 @@ export function createControllerPanel(options = {}) {
     return wrapper;
   }
 
+  /**
+   * Builds the "Active Element" panel: a title and an empty info container
+   * (populated later by `updateActiveElement`) reflecting whichever theme
+   * element is currently hovered.
+   *
+   * @returns {Element} The panel, not yet attached to the DOM.
+   */
   function generateActiveElementLayer() {
     const layer = document.createElement('div');
     layer.classList.add(CLASS_NAMES.activeElementLayer);
@@ -91,6 +138,15 @@ export function createControllerPanel(options = {}) {
     return layer;
   }
 
+  /**
+   * Builds the tab bar (Selected / List / Filters) and its bottom
+   * separator. Each button's click hands off to `switchToTab`; the
+   * "Selected" button also gets the `tabsNavigationTabSelected` class,
+   * which the CSS uses to show the object-type-colored cue dot that
+   * `setTabCue` maintains.
+   *
+   * @returns {Element} The tab navigation bar, not yet attached to the DOM.
+   */
   function generateTabsNavigation() {
     const nav = document.createElement('div');
     nav.classList.add(CLASS_NAMES.tabsNavigation);
@@ -136,6 +192,16 @@ export function createControllerPanel(options = {}) {
     return nav;
   }
 
+  /**
+   * Activates a tab: shows the panel matching `targetId` and hides its
+   * siblings, and marks the corresponding tab button active. A no-op if
+   * either the button or the panel can't be found (e.g. called before
+   * `generateControllerLayer` has finished building the DOM).
+   *
+   * @param {string} targetId The target panel's element `id` — one of
+   *   `IDS.controllerElementSelected`/`controllerElementList`/`controllerElementFilters`.
+   * @returns {void}
+   */
   function switchToTab(targetId) {
     const button = controllerLayer.querySelector(`[data-target-tab="${targetId}"]`);
     const panel = controllerLayer.querySelector(`#${targetId}`);
@@ -152,6 +218,12 @@ export function createControllerPanel(options = {}) {
     panel.classList.add(CLASS_NAMES.tabActive);
   }
 
+  /**
+   * Builds the "List" tab: one `generateListItem` row per theme element
+   * found on the page, in document order.
+   *
+   * @returns {Element} The List tab panel, not yet attached to the DOM.
+   */
   function generateListTab() {
     const layer = document.createElement('div');
     layer.id = IDS.controllerElementList;
@@ -171,6 +243,18 @@ export function createControllerPanel(options = {}) {
     return layer;
   }
 
+  /**
+   * Builds one List tab row for a single theme element: an "activation"
+   * switch (select/deselect this element, labeled with its theme hook) and
+   * a "visibility" eye switch (show/hide its overlay entirely). Registers
+   * `themeElement.listRow` so the overlay engine (selection) and the
+   * Filters tab (visibility) can keep this row's switches in sync when
+   * either changes from somewhere other than this row itself.
+   *
+   * @param {import('../model/themeElement.js').ThemeElement} themeElement
+   *   The theme element this row represents.
+   * @returns {Element} The list item, not yet attached to the DOM.
+   */
   function generateListItem(themeElement) {
     const item = document.createElement('div');
     item.classList.add(CLASS_NAMES.listItem);
@@ -201,10 +285,15 @@ export function createControllerPanel(options = {}) {
       iconOff: CLASS_NAMES.iconToggleOff,
     });
 
-    // Syncs this row's own visibility switch + disabled look, without
-    // touching the overlay — used both by this row's own click (which also
-    // tells the overlay) and by listRow.setVisible (called BY the overlay
-    // when visibility changes elsewhere, e.g. the Filters tab).
+    /**
+     * Syncs this row's own visibility switch + disabled look, without
+     * touching the overlay — used both by this row's own click (which also
+     * tells the overlay) and by listRow.setVisible (called BY the overlay
+     * when visibility changes elsewhere, e.g. the Filters tab).
+     *
+     * @param {boolean} visible New visibility state to reflect.
+     * @returns {void}
+     */
     function applyVisible(visible) {
       visibility.setChecked(visible);
       activation.wrapper.classList.toggle(CLASS_NAMES.inputWrapperDisabled, !visible);
@@ -228,6 +317,16 @@ export function createControllerPanel(options = {}) {
     return item;
   }
 
+  /**
+   * Builds the "Filters" tab: one batch-visibility switch per distinct
+   * `objectType` found on the page (labeled with the type and its element
+   * count), plus an "All Elements" switch that sets every type at once.
+   * Each switch is a pure batch action (see `applyFilterVisible`) rather
+   * than a tri-state reflecting each member's actual current visibility —
+   * it always just shows the state it was last set to.
+   *
+   * @returns {Element} The Filters tab panel, not yet attached to the DOM.
+   */
   function generateFiltersTab() {
     const layer = document.createElement('div');
     layer.id = IDS.controllerElementFilters;
@@ -246,10 +345,19 @@ export function createControllerPanel(options = {}) {
       groups.get(themeElement.objectType).push(themeElement);
     });
 
-    // A filter switch is a pure batch action: it always shows the state you
-    // last set it to, and setting it shows/hides every member element. It
-    // deliberately doesn't try to track whether members have since drifted
-    // out of sync via individual List-tab toggles.
+    /**
+     * A filter switch is a pure batch action: it always shows the state
+     * you last set it to, and setting it shows/hides every member element.
+     * It deliberately doesn't try to track whether members have since
+     * drifted out of sync via individual List-tab toggles.
+     *
+     * @param {{ wrapper: Element, input: Element, setChecked: (checked: boolean) => void }} filterSwitch
+     *   The on/off switch (from `createOnOffSwitch`) representing this type.
+     * @param {import('../model/themeElement.js').ThemeElement[]} members
+     *   Every theme element of this type.
+     * @param {boolean} visible New visibility state for the whole group.
+     * @returns {void}
+     */
     function applyFilterVisible(filterSwitch, members, visible) {
       filterSwitch.setChecked(visible);
       filterSwitch.wrapper.setAttribute(LAYER_ATTRIBUTES.visible, String(visible));
@@ -314,6 +422,13 @@ export function createControllerPanel(options = {}) {
     return layer;
   }
 
+  /**
+   * Builds the "Selected Element" panel: basic info (object type +
+   * property hook), theme suggestions, and template file path — each an
+   * empty container populated later by `updateSelectedElement`.
+   *
+   * @returns {Element} The panel, not yet attached to the DOM.
+   */
   function generateSelectedElementLayer() {
     const layer = document.createElement('div');
     const title = document.createElement('h3');
@@ -352,6 +467,16 @@ export function createControllerPanel(options = {}) {
     return layer;
   }
 
+  /**
+   * Builds the whole fly-out panel: the activation form (top checkbox),
+   * and the scrollable content area (Active Element, tab navigation,
+   * Selected/List/Filters panels). Restores the activation state from
+   * `storage` and applies it immediately. Assigns the result to the
+   * closured `controllerLayer` — required before any of the other
+   * functions in this file that query `controllerLayer` can run.
+   *
+   * @returns {Element} The whole panel element.
+   */
   function generateControllerLayer() {
     const layer = document.createElement('div');
     layer.classList.add(CLASS_NAMES.visualDebugger, CLASS_NAMES.controllerBaseLayer);
@@ -405,6 +530,15 @@ export function createControllerPanel(options = {}) {
 
   // ---- Activation / sizing ------------------------------------------------
 
+  /**
+   * Activates or deactivates the whole debugger: toggles the
+   * activated/deactivated classes on `document.body` (which the CSS uses
+   * to hide/collapse the overlay and panel), persists the choice, and
+   * repositions the panel to match.
+   *
+   * @param {boolean} [activated] New activation state.
+   * @returns {void}
+   */
   function toggleDebuggerActivated(activated = true) {
     document.body.classList.toggle(CLASS_NAMES.controllerActivated, activated);
     document.body.classList.toggle(CLASS_NAMES.controllerDeactivated, !activated);
@@ -416,10 +550,23 @@ export function createControllerPanel(options = {}) {
     }
   }
 
+  /**
+   * Reads the panel's current activation state back from the DOM (the
+   * attribute `toggleDebuggerActivated` set), rather than from a separate
+   * variable — so it's always in sync with what's actually rendered.
+   *
+   * @returns {boolean} `true` if the debugger is currently activated.
+   */
   function getControllerActivationStatus() {
     return controllerLayer.getAttribute(LAYER_ATTRIBUTES.controllerActivated) === 'true';
   }
 
+  /**
+   * Slides the panel fully into view when activated, or mostly off-screen
+   * (leaving a small grab handle showing) when deactivated.
+   *
+   * @returns {void}
+   */
   function checkControllerActivation() {
     if (getControllerActivationStatus()) {
       controllerLayer.style.right = '0px';
@@ -430,6 +577,13 @@ export function createControllerPanel(options = {}) {
     controllerLayer.style.right = `${newPosition}px`;
   }
 
+  /**
+   * Sets the panel's initial width from `storage` (falling back to
+   * `DEFAULTS.initialControllerWidth`), clamped so it never exceeds the
+   * panel's own CSS `max-width` or the current viewport width.
+   *
+   * @returns {void}
+   */
   function calculateInitialControllerWidth() {
     const stored = storage.get(STORAGE_KEYS.controllerWidth, DEFAULTS.initialControllerWidth);
     let outputWidth = stored;
@@ -448,6 +602,14 @@ export function createControllerPanel(options = {}) {
     controllerLayer.style.width = `${outputWidth}px`;
   }
 
+  /**
+   * Builds and attaches the click-and-drag handle used to resize the
+   * panel. Tracks `mousedown` on the handle itself (only while the panel
+   * is activated), then `mousemove`/`mouseup` on `document` so dragging
+   * keeps working even if the cursor leaves the handle.
+   *
+   * @returns {void}
+   */
   function generateSliderButton() {
     let isMouseDown = false;
     const button = document.createElement('button');
@@ -472,6 +634,15 @@ export function createControllerPanel(options = {}) {
     controllerLayer.appendChild(button);
   }
 
+  /**
+   * Recomputes the panel's width so its left edge tracks the mouse
+   * position during a drag-resize, deferred to the next animation frame to
+   * avoid layout thrashing on every `mousemove`.
+   *
+   * @param {number} [mousePosition] Current horizontal mouse position
+   *   (`event.clientX`) during the drag.
+   * @returns {void}
+   */
   function resizeControllerLayer(mousePosition = 0) {
     const rect = controllerLayer.getBoundingClientRect();
     requestAnimationFrame(() => {
@@ -480,8 +651,13 @@ export function createControllerPanel(options = {}) {
     });
   }
 
-  // Mirrors an ancestor's top offset (e.g. a sticky admin toolbar pushing
-  // body padding-top) onto the controller panel's own top position.
+  /**
+   * Mirrors an ancestor's top offset (e.g. a sticky admin toolbar pushing
+   * body padding-top) onto the controller panel's own top position, so the
+   * panel doesn't end up underneath a toolbar.
+   *
+   * @returns {void}
+   */
   function observeBodyOffset() {
     const observer = new MutationObserver((mutations) => {
       if (!controllerLayer) return;
@@ -493,6 +669,20 @@ export function createControllerPanel(options = {}) {
 
   // ---- Info rendering ------------------------------------------------------
 
+  /**
+   * Renders a theme element's basic info (object type tag + property hook
+   * tag, skipping the hook if it's identical to the object type) into a
+   * target container, replacing whatever was there before. Used by both
+   * the Active Element and Selected Element panels.
+   *
+   * @param {import('../model/themeElement.js').ThemeElement|null} themeElement
+   *   The element to describe, or `null` to render the empty-state tag.
+   * @param {Element} targetLayer Container to render into; its existing
+   *   contents are cleared first.
+   * @param {string} [infoType] Which empty-state message to use when
+   *   `themeElement` is `null` — see `generateEmptyTag`.
+   * @returns {void}
+   */
   function setElementInfo(themeElement, targetLayer, infoType = 'active') {
     targetLayer.innerHTML = '';
 
@@ -522,6 +712,14 @@ export function createControllerPanel(options = {}) {
     }
   }
 
+  /**
+   * Renders the currently-selected element's theme suggestions list (one
+   * copyable row per suggestion, marked activated/not) into the Selected
+   * Element panel. Reads `defaultThemeElement` directly rather than taking
+   * a parameter, since it's always this panel's own selection state.
+   *
+   * @returns {void}
+   */
   function setSelectedElementSuggestions() {
     const themeElement = defaultThemeElement;
     const layer = controllerLayer.querySelector(`#${IDS.controllerElementSuggestions}`);
@@ -542,6 +740,14 @@ export function createControllerPanel(options = {}) {
     });
   }
 
+  /**
+   * Renders the currently-selected element's template file path as a
+   * copyable row into the Selected Element panel (or the empty-state tag
+   * if nothing's selected, or the selected element has no file path).
+   * Reads `defaultThemeElement` directly, same as `setSelectedElementSuggestions`.
+   *
+   * @returns {void}
+   */
   function setSelectedElementTemplateFilePath() {
     const themeElement = defaultThemeElement;
     const target = controllerLayer.querySelector(`#${IDS.controllerElementTemplateFilePath}`);
@@ -560,11 +766,26 @@ export function createControllerPanel(options = {}) {
     target.appendChild(row);
   }
 
+  /**
+   * Refreshes the Active Element panel to reflect `activeThemeElement`
+   * (the currently-hovered theme element, or `null`). Call after changing
+   * `activeThemeElement`.
+   *
+   * @returns {void}
+   */
   function updateActiveElement() {
     const layer = controllerLayer.querySelector(`#${IDS.controllerActiveElementInfo}`);
     setElementInfo(activeThemeElement, layer, 'active');
   }
 
+  /**
+   * Refreshes everything driven by `defaultThemeElement` (the currently
+   * selected theme element, or `null`): the Selected Element panel's basic
+   * info, suggestions, and file path, plus the Selected tab's color cue.
+   * Call after changing `defaultThemeElement`.
+   *
+   * @returns {void}
+   */
   function updateSelectedElement() {
     const layer = controllerLayer.querySelector(`#${IDS.controllerElementInfo}`);
     setElementInfo(defaultThemeElement, layer, 'selected');
@@ -573,9 +794,15 @@ export function createControllerPanel(options = {}) {
     setTabCue();
   }
 
-  // Colors the "Selected" tab's ::before dot to match the selected
-  // element's object type, via the same --color--object-type cascade the
-  // overlay/list/filter rows use (see base/_types.scss).
+  /**
+   * Colors the "Selected" tab's `::before` dot to match the selected
+   * element's object type, via the same `--color--object-type` cascade the
+   * overlay/list/filter rows use (see `base/_types.scss`). Clears any
+   * previous object-type class off the tab button first, then — if
+   * something's selected — adds the current one.
+   *
+   * @returns {void}
+   */
   function setTabCue() {
     const button = controllerLayer.querySelector(`#${IDS.controllerButtonSelected}`);
     if (!button) return;
@@ -591,26 +818,65 @@ export function createControllerPanel(options = {}) {
 
   // ---- Public hooks (consumed by the overlay engine) ------------------------
 
+  /**
+   * `ControllerHooks.setActiveThemeElement` — called by the overlay engine
+   * when a theme element becomes hovered.
+   *
+   * @param {import('../model/themeElement.js').ThemeElement} themeElement
+   *   The newly-hovered theme element.
+   * @returns {void}
+   */
   function setActiveThemeElement(themeElement) {
     activeThemeElement = themeElement;
     updateActiveElement();
   }
 
+  /**
+   * `ControllerHooks.resetActiveThemeElement` — called by the overlay
+   * engine when the hovered theme element stops being hovered.
+   *
+   * @returns {void}
+   */
   function resetActiveThemeElement() {
     activeThemeElement = null;
     updateActiveElement();
   }
 
+  /**
+   * `ControllerHooks.setDefaultThemeElement` — called by the overlay
+   * engine when a theme element becomes the single selected element.
+   *
+   * @param {import('../model/themeElement.js').ThemeElement} themeElement
+   *   The newly-selected theme element.
+   * @returns {void}
+   */
   function setDefaultThemeElement(themeElement) {
     defaultThemeElement = themeElement;
     updateSelectedElement();
   }
 
+  /**
+   * `ControllerHooks.resetDefaultThemeElement` — called by the overlay
+   * engine when the selected theme element is deselected.
+   *
+   * @returns {void}
+   */
   function resetDefaultThemeElement() {
     defaultThemeElement = null;
     updateSelectedElement();
   }
 
+  /**
+   * One-time setup that must run after the panel's DOM exists and has been
+   * attached to the document (so `getBoundingClientRect`/computed styles
+   * are meaningful): wires the resize handle, sizes the panel, positions
+   * it per its activation state, renders the initial Active/Selected
+   * Element panels, and activates the "Selected" tab. Called once by the
+   * consumer (see `src/index.js`) after appending `controllerLayer` to the
+   * document.
+   *
+   * @returns {void}
+   */
   function executePostActivation() {
     generateSliderButton();
     calculateInitialControllerWidth();
@@ -626,6 +892,13 @@ export function createControllerPanel(options = {}) {
   observeBodyOffset();
 
   return {
+    /**
+     * The panel's root element, built synchronously above. Append it to
+     * the document once; the getter just exposes the closured value (it's
+     * never reassigned after construction).
+     *
+     * @returns {Element}
+     */
     get controllerLayer() {
       return controllerLayer;
     },

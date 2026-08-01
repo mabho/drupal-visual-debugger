@@ -13,16 +13,35 @@ import { CLASS_NAMES } from '../constants.js';
  * array, no Drupal.t() coupling.
  *
  * @param {object} [options]
- * @param {string} [options.label]
- * @param {boolean} [options.checked]
- * @param {string[]} [options.wrapperClasses]
- * @param {Record<string, string>} [options.wrapperAttributes]
- * @param {boolean} [options.labelFirst] Place the label after the icons (true) or before (false).
+ * @param {string} [options.label] Visible text label. When non-empty, a
+ *   `<label for="...">` is created and associated with the switch's
+ *   checkbox via a generated unique `id` (skipped entirely when omitted —
+ *   e.g. the List tab's visibility eye toggle has no label of its own).
+ * @param {boolean} [options.checked] Initial checked state.
+ * @param {string[]} [options.wrapperClasses] Extra class names to add to
+ *   the wrapper `<div>`, alongside the standard toggle-wrapper classes.
+ * @param {Record<string, string>} [options.wrapperAttributes] Extra
+ *   `name: value` attribute pairs to set on the wrapper `<div>` (e.g.
+ *   `data-vd-visible`).
+ * @param {boolean} [options.labelFirst] Where to place the label relative
+ *   to the checkbox/icons: appended after them (`true`, the default) or
+ *   inserted before them (`false`).
  * @param {string} options.iconOn Icon class shown when checked.
  * @param {string} options.iconOff Icon class shown when unchecked.
  * @param {string} [options.iconBullet] Extra static icon class prepended before everything
  *   else (used by the Filters tab for its per-type color swatch).
- * @returns {{ wrapper: Element, input: Element, setChecked: (checked: boolean) => void }}
+ * @returns {{
+ *   wrapper: Element,
+ *   input: Element,
+ *   setChecked: (checked: boolean) => void,
+ * }} `wrapper` is the element to insert into the DOM and to attach
+ *   interaction listeners to (the checkbox itself has `pointer-events:
+ *   none` and can't be clicked directly — this matches the original
+ *   module's markup). `input` is the underlying checkbox, exposed so
+ *   callers can read `.checked`. `setChecked(value)` updates the checkbox
+ *   and wrapper classes to reflect a new state without dispatching any
+ *   DOM events — use it to sync this switch's visuals when the state
+ *   changed for a reason other than the user clicking this exact switch.
  */
 export function createOnOffSwitch({
   label = '',
@@ -50,6 +69,15 @@ export function createOnOffSwitch({
   input.style.pointerEvents = 'none';
   input.classList.add(CLASS_NAMES.checkboxToggle);
 
+  /**
+   * Builds one of the switch's icon `<span>`s (on/off/bullet).
+   *
+   * @param {string} iconClass Icon font class selecting which glyph renders.
+   * @param {string} stateClass Extra class marking this icon's role (e.g.
+   *   `CLASS_NAMES.activated`/`deactivated`), used by the CSS to show only
+   *   the icon matching the current checked state.
+   * @returns {Element} The icon `<span>`, not yet attached to the DOM.
+   */
   const makeIcon = (iconClass, stateClass) => {
     const icon = document.createElement('span');
     icon.style.pointerEvents = 'none';
@@ -85,6 +113,14 @@ export function createOnOffSwitch({
     wrapper.insertBefore(makeIcon(iconBullet, CLASS_NAMES.iconWithinContent), wrapper.firstChild);
   }
 
+  /**
+   * Syncs the checkbox and wrapper classes to a new checked state. Does
+   * not dispatch a `change`/`click` event — this is a one-way visual sync,
+   * not a simulated user interaction.
+   *
+   * @param {boolean} value New checked state.
+   * @returns {void}
+   */
   function setChecked(value) {
     input.checked = value;
     wrapper.classList.toggle(CLASS_NAMES.inputWrapperActivated, value);

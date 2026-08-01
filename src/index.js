@@ -23,7 +23,10 @@ import { CLASS_NAMES, IDS, LAYER_ATTRIBUTES, STORAGE_KEYS } from './constants.js
  *   baseLayer: Element,
  *   controllerLayer: Element,
  *   panel: ReturnType<typeof createControllerPanel>,
- * } | null}
+ * } | null} The parsed theme elements plus the overlay/panel roots that
+ *   were appended to `document.body`, or `null` if `root` was already
+ *   initialized (the no-op case above) — in which case nothing was
+ *   built or appended.
  */
 export function init(options = {}) {
   const root = options.root ?? document.body;

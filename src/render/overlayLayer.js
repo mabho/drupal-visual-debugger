@@ -5,12 +5,31 @@ import { CLASS_NAMES, LAYER_ATTRIBUTES } from '../constants.js';
  * theme element. Fully agnostic: it operates on the ThemeElement objects
  * it's given and has no knowledge of Drupal comments or Twig.
  *
+ * Builds one overlay ("instance layer") per theme element immediately, up
+ * front, and mutates each `themeElement` in place by setting its
+ * `instanceLayer` property — everything else in this module (and the
+ * controller panel) locates a theme element's overlay through that
+ * property rather than keeping a separate lookup table.
+ *
  * @param {object} options
  * @param {import('../model/themeElement.js').ThemeElement[]} options.themeElements
+ *   Every theme element found on the page (from `parseThemeDebugElements`).
+ *   The returned engine holds onto this exact array/its elements — mutating
+ *   a `themeElement` after this call (e.g. setting `.listRow`) is how the
+ *   controller panel wires itself in, not an anti-pattern to avoid here.
  * @returns {{
  *   baseLayer: Element,
  *   attachControllerHooks: (hooks: ControllerHooks) => void,
- * }}
+ *   isThemeElementSelected: (themeElement: import('../model/themeElement.js').ThemeElement) => boolean,
+ *   toggleThemeElementSelection: (themeElement: import('../model/themeElement.js').ThemeElement) => void,
+ *   setThemeElementVisible: (themeElement: import('../model/themeElement.js').ThemeElement, visible: boolean) => void,
+ *   hoverThemeElement: (themeElement: import('../model/themeElement.js').ThemeElement) => void,
+ *   unhoverThemeElement: (themeElement: import('../model/themeElement.js').ThemeElement) => void,
+ * }} `baseLayer` is the container element holding every instance layer —
+ *   append it to the document once. The rest of the shape is the API
+ *   surface the controller panel's List/Filters tabs drive directly (see
+ *   each named function below for details); `attachControllerHooks` wires
+ *   up the reverse direction (overlay → panel notifications).
  */
 export function createOverlayEngine({ themeElements }) {
   const baseLayer = document.createElement('div');
@@ -28,8 +47,17 @@ export function createOverlayEngine({ themeElements }) {
   observePositionChanges(themeElements);
 
   /**
+   * Creates the overlay box painted on top of a single theme element's
+   * real DOM node: positions it to match that node's current bounding box,
+   * gives it a checkbox + activated/deactivated icons (the overlay's own
+   * visible checked/unchecked indicator), and wires up hover (highlight +
+   * notify the panel's Active Element view) and click (toggle selection).
+   *
    * @param {import('../model/themeElement.js').ThemeElement} themeElement
-   * @returns {Element}
+   *   The theme element to build an overlay for. Read for `objectType`,
+   *   `id`, and `dataNode`; not mutated by this function itself (the
+   *   caller sets `.instanceLayer` after this returns).
+   * @returns {Element} The overlay `<div>`, not yet attached to `baseLayer`.
    */
   function buildInstanceLayer(themeElement) {
     const layer = document.createElement('div');
@@ -77,7 +105,9 @@ export function createOverlayEngine({ themeElements }) {
    * Is this theme element currently the single selected/"checked" one?
    *
    * @param {import('../model/themeElement.js').ThemeElement} themeElement
-   * @returns {boolean}
+   *   The theme element to check. Must already have an `instanceLayer`
+   *   (i.e. have gone through `buildInstanceLayer`).
+   * @returns {boolean} `true` if this is the currently selected element.
    */
   function isChecked(themeElement) {
     return themeElement.instanceLayer.classList.contains(CLASS_NAMES.instanceLayerChecked);
@@ -93,7 +123,10 @@ export function createOverlayEngine({ themeElements }) {
    * click back and forth between the overlay and the list row.
    *
    * @param {import('../model/themeElement.js').ThemeElement} themeElement
-   * @param {boolean} checked
+   *   The theme element being selected or deselected.
+   * @param {boolean} checked `true` to select this element (deselecting
+   *   any other currently-selected element first), `false` to deselect it.
+   * @returns {void}
    */
   function setChecked(themeElement, checked) {
     if (checked) {
@@ -117,7 +150,14 @@ export function createOverlayEngine({ themeElements }) {
   }
 
   /**
+   * Flips a theme element's selected state — selects it if it wasn't
+   * selected, deselects it if it was. Exposed to the panel as
+   * `toggleThemeElementSelection`, used by both the overlay's own click
+   * handler and the List tab's row click.
+   *
    * @param {import('../model/themeElement.js').ThemeElement} themeElement
+   *   The theme element whose selection should be toggled.
+   * @returns {void}
    */
   function toggleChecked(themeElement) {
     setChecked(themeElement, !isChecked(themeElement));
@@ -129,7 +169,9 @@ export function createOverlayEngine({ themeElements }) {
    * hideInstanceLayer().
    *
    * @param {import('../model/themeElement.js').ThemeElement} themeElement
-   * @param {boolean} visible
+   *   The theme element to show or hide.
+   * @param {boolean} visible `true` to show its overlay, `false` to hide it.
+   * @returns {void}
    */
   function setVisible(themeElement, visible) {
     if (!visible && isChecked(themeElement)) setChecked(themeElement, false);
@@ -144,6 +186,8 @@ export function createOverlayEngine({ themeElements }) {
    * to be toggled explicitly.
    *
    * @param {import('../model/themeElement.js').ThemeElement} themeElement
+   *   The theme element to highlight as hovered.
+   * @returns {void}
    */
   function hoverThemeElement(themeElement) {
     themeElement.instanceLayer.classList.add(CLASS_NAMES.instanceLayerHover, CLASS_NAMES.objectTypeHover);
@@ -151,7 +195,12 @@ export function createOverlayEngine({ themeElements }) {
   }
 
   /**
+   * Clears the synthetic hover highlight applied by `hoverThemeElement` and
+   * resets the panel's Active Element view.
+   *
    * @param {import('../model/themeElement.js').ThemeElement} themeElement
+   *   The theme element to stop highlighting.
+   * @returns {void}
    */
   function unhoverThemeElement(themeElement) {
     themeElement.instanceLayer.classList.remove(CLASS_NAMES.instanceLayerHover, CLASS_NAMES.objectTypeHover);
@@ -159,8 +208,12 @@ export function createOverlayEngine({ themeElements }) {
   }
 
   /**
-   * @param {Element} layer
-   * @param {Element} refElement
+   * Sizes and positions an overlay layer to match a reference element's
+   * current bounding box, accounting for page scroll.
+   *
+   * @param {Element} layer The overlay `<div>` to reposition.
+   * @param {Element} refElement The real DOM element the overlay tracks.
+   * @returns {void}
    */
   function positionLayer(layer, refElement) {
     const rect = refElement.getBoundingClientRect();
@@ -171,8 +224,12 @@ export function createOverlayEngine({ themeElements }) {
   }
 
   /**
-   * @param {Element} element
-   * @returns {number}
+   * Counts how many ancestors an element has, used to derive a `z-index`
+   * so more deeply nested overlays draw on top of their containers'.
+   *
+   * @param {Element} element The element to measure.
+   * @returns {number} Number of ancestor nodes up to (and not including)
+   *   the document root.
    */
   function getDomDepth(element) {
     let depth = 0;
@@ -190,6 +247,9 @@ export function createOverlayEngine({ themeElements }) {
    * toolbar toggling and shifting body padding).
    *
    * @param {import('../model/themeElement.js').ThemeElement[]} elements
+   *   Theme elements to keep aligned; each must already have both
+   *   `instanceLayer` and `dataNode` set.
+   * @returns {void}
    */
   function observePositionChanges(elements) {
     const resizeObserver = new ResizeObserver((entries) => {
@@ -211,7 +271,15 @@ export function createOverlayEngine({ themeElements }) {
 
   return {
     baseLayer,
-    /** @param {ControllerHooks} hooks */
+    /**
+     * Registers the controller panel's notification callbacks, so this
+     * engine can inform the panel of hover/selection changes it initiates
+     * (a real mouseenter/click on an overlay). Must be called once, after
+     * both the overlay and panel are constructed — see `src/index.js`.
+     *
+     * @param {ControllerHooks} hooks
+     * @returns {void}
+     */
     attachControllerHooks(hooks) {
       controllerHooks = hooks;
     },
@@ -224,9 +292,18 @@ export function createOverlayEngine({ themeElements }) {
 }
 
 /**
+ * The controller panel's side of the overlay ↔ panel contract (see
+ * `createControllerPanel` in `controllerPanel.js`, which returns an object
+ * implementing this shape). Registered via `attachControllerHooks`.
+ *
  * @typedef {object} ControllerHooks
  * @property {(themeElement: import('../model/themeElement.js').ThemeElement) => void} setActiveThemeElement
+ *   Called when a theme element becomes hovered (real mouseenter on its
+ *   overlay, or a synthetic hover from the List/Filters tab).
  * @property {() => void} resetActiveThemeElement
+ *   Called when the currently-hovered theme element stops being hovered.
  * @property {(themeElement: import('../model/themeElement.js').ThemeElement) => void} setDefaultThemeElement
+ *   Called when a theme element becomes the single selected element.
  * @property {() => void} resetDefaultThemeElement
+ *   Called when the currently-selected theme element is deselected.
  */

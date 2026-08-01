@@ -20,6 +20,17 @@ export const CLASS_NAMES = {
   instanceLayerHover: 'instance-element--hover',
   objectType: 'object-type',
   objectTypeHover: 'object-type--hover',
+  /**
+   * Builds the per-type modifier class (e.g. `object-type--node`) that
+   * `base/_types.scss` uses to set the `--vd-color--object-type` custom
+   * property in a given scope. Used on overlay layers, List/Filters rows,
+   * and the "Selected" tab's color cue (`setTabCue` in controllerPanel.js).
+   *
+   * @param {string} objectType The theme element's object type (e.g.
+   *   `'node'`, `'block'`), or `''` to build the bare prefix used when
+   *   scanning for/removing any previously-applied type class.
+   * @returns {string} The modifier class name.
+   */
   objectTypeTyped: (objectType) => `object-type--${objectType}`,
   iconActivated: 'icon-checkbox-checked',
   iconDeactivated: 'icon-checkbox-unchecked',

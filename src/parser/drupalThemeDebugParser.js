@@ -34,8 +34,26 @@ const RE_TEMPLATE_END_OUTPUT = /END(?: CUSTOM TEMPLATE)? OUTPUT from '([^']*)'/;
  * Walks every comment node under `root` and builds one ThemeElement per
  * "THEME DEBUG ... BEGIN OUTPUT" block that resolves to a real DOM element.
  *
- * @param {Element} [root] Root to scan. Defaults to document.body.
- * @returns {import('../model/themeElement.js').ThemeElement[]}
+ * Implementation note: `root.querySelectorAll('*')` only returns Element
+ * nodes, so comment nodes are found by then walking each element's own
+ * `childNodes` — this still visits every comment in document order because
+ * every comment in Drupal's debug output is a child of some element under
+ * `root`. Each comment is tested against the module-level regexes in turn;
+ * matching `THEME DEBUG` flips on an `activated` flag that gates all
+ * subsequent matches until a `BEGIN OUTPUT` comment is found (successful or
+ * not — see `drupalThemeDebugParser.js`'s file-level comment for why both
+ * `BEGIN OUTPUT` and `BEGIN CUSTOM TEMPLATE OUTPUT` must match), at which
+ * point the in-progress `current` element is either pushed (if it resolved
+ * to a real DOM element) or discarded, and scanning resets for the next
+ * block.
+ *
+ * @param {Element} [root] Root element to scan for theme debug comments.
+ *   Defaults to `document.body`. Comments outside of `root` (e.g. in
+ *   `<head>`) are not seen.
+ * @returns {import('../model/themeElement.js').ThemeElement[]} One entry
+ *   per matched "THEME DEBUG ... BEGIN OUTPUT" block, in document order.
+ *   Blocks that never resolved to a real DOM element (no matching
+ *   `BEGIN OUTPUT`, or no element immediately following it) are omitted.
  */
 export function parseThemeDebugElements(root = document.body) {
   const themeElements = [];
@@ -105,7 +123,10 @@ export function parseThemeDebugElements(root = document.body) {
  * an "Aggregate by type" view (see the module's roadmap).
  *
  * @param {import('../model/themeElement.js').ThemeElement[]} themeElements
- * @returns {string[]}
+ *   Theme elements to collect hooks from, typically the array returned by
+ *   {@link parseThemeDebugElements}.
+ * @returns {string[]} Alphabetically sorted list of distinct
+ *   `propertyHook` values (e.g. `['block__system_branding_block', 'node__article']`).
  */
 export function getUniquePropertyHooks(themeElements) {
   return [...new Set(themeElements.map((el) => el.propertyHook))].sort();
