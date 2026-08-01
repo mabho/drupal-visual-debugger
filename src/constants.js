@@ -107,6 +107,12 @@ export const CLASS_NAMES = {
 };
 
 export const IDS = {
+  // The Shadow DOM host appended to the document — see
+  // render/controllerPanel.js's generateControllerLayer(). Deliberately
+  // the only identifying attribute on that element; it carries no
+  // visual-debugger--* classes so page CSS has nothing to coincidentally
+  // match.
+  controllerHost: 'visual-debugger--controller-host',
   controllerActiveElementInfo: 'visual-debugger--controller--active-element--info',
   controllerElementInfo: 'visual-debugger--controller-layer--info',
   controllerElementSuggestions: 'visual-debugger--controller-layer--suggestions',

@@ -2,6 +2,14 @@ import { CLASS_NAMES, IDS, LAYER_ATTRIBUTES, STORAGE_KEYS, DEFAULTS } from '../c
 import { webStorageAdapter } from '../storage/webStorageAdapter.js';
 import { defaultStrings } from '../i18n/defaultStrings.js';
 import { createOnOffSwitch } from './onOffSwitch.js';
+// Generated at build time by build.mjs's buildPanelStyles() into the
+// package-root generated/ directory (gitignored, kept out of src/ since
+// everything else here is hand-authored) — the panel's own compiled CSS
+// plus self-contained (base64-embedded font) copies of the icon font and
+// Open Sans, concatenated. Not authored directly; see that function's doc
+// comment for why the panel needs its own copies instead of relying on
+// the standalone dist/*.css files the overlay uses.
+import panelStyles from '../../generated/panelStyles.css';
 
 /**
  * Builds the fly-out inspector panel: activation toggle, tabbed
@@ -34,7 +42,20 @@ export function createControllerPanel(options = {}) {
 
   let activeThemeElement = null;
   let defaultThemeElement = null;
-  let controllerLayer = null;
+  // The panel's own styled root — carries all the visual-debugger--*
+  // classes/attributes/inline positioning styles, exactly as it did before
+  // the panel moved behind a Shadow DOM boundary. Every other function in
+  // this file that queries/styles "the panel" operates on this, not on
+  // panelHost — querying a subtree works the same whether or not that
+  // subtree happens to live inside a shadow root.
+  let panelRoot = null;
+  // The light-DOM element actually appended to the document (see
+  // generateControllerLayer): a bare host with no meaningful classes,
+  // owning the shadow root that panelRoot lives in. Exposed externally as
+  // `controllerLayer` (see the returned getter at the bottom of this
+  // file) — that name describes the public contract ("append this"), not
+  // this variable.
+  let panelHost = null;
 
   /**
    * The theme element the "Selected Element" panel should currently show:
@@ -203,8 +224,8 @@ export function createControllerPanel(options = {}) {
    * @returns {void}
    */
   function switchToTab(targetId) {
-    const button = controllerLayer.querySelector(`[data-target-tab="${targetId}"]`);
-    const panel = controllerLayer.querySelector(`#${targetId}`);
+    const button = panelRoot.querySelector(`[data-target-tab="${targetId}"]`);
+    const panel = panelRoot.querySelector(`#${targetId}`);
     if (!button || !panel) return;
 
     Array.from(button.parentElement.children).forEach((sibling) => {
@@ -470,12 +491,24 @@ export function createControllerPanel(options = {}) {
   /**
    * Builds the whole fly-out panel: the activation form (top checkbox),
    * and the scrollable content area (Active Element, tab navigation,
-   * Selected/List/Filters panels). Restores the activation state from
-   * `storage` and applies it immediately. Assigns the result to the
-   * closured `controllerLayer` — required before any of the other
-   * functions in this file that query `controllerLayer` can run.
+   * Selected/List/Filters panels) — then seals it behind a Shadow DOM
+   * boundary. Restores the activation state from `storage` and applies it
+   * immediately. Assigns `panelRoot` (the styled content, inside the
+   * shadow root) and `panelHost` (the plain light-DOM element that owns
+   * the shadow root) — required before any of the other functions in this
+   * file that query `panelRoot` can run.
    *
-   * @returns {Element} The whole panel element.
+   * The host is deliberately bare (no `visual-debugger*` classes) so
+   * nothing in the host page's CSS can coincidentally target it; all the
+   * real styling lives on `panelRoot`, matched by the embedded stylesheet
+   * from inside the shadow tree. That stylesheet opens with `:host { all:
+   * initial; }`, which resets every inherited property (including any
+   * `--vd-*` custom property the host page might set on `:root`/`body`)
+   * at the boundary — without it, inherited properties would still cross
+   * into the shadow tree despite the rule-scoping Shadow DOM otherwise
+   * gives us for free.
+   *
+   * @returns {Element} `panelHost` — the element to append to the document.
    */
   function generateControllerLayer() {
     const layer = document.createElement('div');
@@ -523,9 +556,18 @@ export function createControllerPanel(options = {}) {
     );
     layer.append(form, content);
 
-    controllerLayer = layer;
+    const host = document.createElement('div');
+    host.id = IDS.controllerHost;
+    const shadowRoot = host.attachShadow({ mode: 'open' });
+
+    const styleEl = document.createElement('style');
+    styleEl.textContent = panelStyles;
+    shadowRoot.append(styleEl, layer);
+
+    panelRoot = layer;
+    panelHost = host;
     toggleDebuggerActivated(activated);
-    return layer;
+    return host;
   }
 
   // ---- Activation / sizing ------------------------------------------------
@@ -544,8 +586,8 @@ export function createControllerPanel(options = {}) {
     document.body.classList.toggle(CLASS_NAMES.controllerDeactivated, !activated);
     storage.set(STORAGE_KEYS.debuggerActivated, String(activated));
 
-    if (controllerLayer) {
-      controllerLayer.setAttribute(LAYER_ATTRIBUTES.controllerActivated, String(activated));
+    if (panelRoot) {
+      panelRoot.setAttribute(LAYER_ATTRIBUTES.controllerActivated, String(activated));
       checkControllerActivation();
     }
   }
@@ -558,7 +600,7 @@ export function createControllerPanel(options = {}) {
    * @returns {boolean} `true` if the debugger is currently activated.
    */
   function getControllerActivationStatus() {
-    return controllerLayer.getAttribute(LAYER_ATTRIBUTES.controllerActivated) === 'true';
+    return panelRoot.getAttribute(LAYER_ATTRIBUTES.controllerActivated) === 'true';
   }
 
   /**
@@ -569,12 +611,12 @@ export function createControllerPanel(options = {}) {
    */
   function checkControllerActivation() {
     if (getControllerActivationStatus()) {
-      controllerLayer.style.right = '0px';
+      panelRoot.style.right = '0px';
       return;
     }
-    const width = parseInt(controllerLayer.style.width, 10) || 0;
+    const width = parseInt(panelRoot.style.width, 10) || 0;
     const newPosition = (width - DEFAULTS.controllerDeactivatedGap) * -1;
-    controllerLayer.style.right = `${newPosition}px`;
+    panelRoot.style.right = `${newPosition}px`;
   }
 
   /**
@@ -589,7 +631,7 @@ export function createControllerPanel(options = {}) {
     let outputWidth = stored;
 
     const screenWidth = window.innerWidth;
-    const maxWidth = window.getComputedStyle(controllerLayer).getPropertyValue('max-width');
+    const maxWidth = window.getComputedStyle(panelRoot).getPropertyValue('max-width');
 
     if (maxWidth) {
       const maxWidthValue = parseFloat(maxWidth);
@@ -599,7 +641,7 @@ export function createControllerPanel(options = {}) {
         : Math.min(screenWidth, maxWidthValue, storedValue);
     }
 
-    controllerLayer.style.width = `${outputWidth}px`;
+    panelRoot.style.width = `${outputWidth}px`;
   }
 
   /**
@@ -628,10 +670,10 @@ export function createControllerPanel(options = {}) {
     document.addEventListener('mouseup', () => {
       if (!isMouseDown) return;
       isMouseDown = false;
-      storage.set(STORAGE_KEYS.controllerWidth, controllerLayer.style.width);
+      storage.set(STORAGE_KEYS.controllerWidth, panelRoot.style.width);
     });
 
-    controllerLayer.appendChild(button);
+    panelRoot.appendChild(button);
   }
 
   /**
@@ -644,10 +686,10 @@ export function createControllerPanel(options = {}) {
    * @returns {void}
    */
   function resizeControllerLayer(mousePosition = 0) {
-    const rect = controllerLayer.getBoundingClientRect();
+    const rect = panelRoot.getBoundingClientRect();
     requestAnimationFrame(() => {
       const newWidth = rect.width + rect.left - mousePosition;
-      controllerLayer.style.width = `${newWidth}px`;
+      panelRoot.style.width = `${newWidth}px`;
     });
   }
 
@@ -660,9 +702,9 @@ export function createControllerPanel(options = {}) {
    */
   function observeBodyOffset() {
     const observer = new MutationObserver((mutations) => {
-      if (!controllerLayer) return;
+      if (!panelRoot) return;
       const newTop = mutations[0].target.style.paddingTop || 0;
-      controllerLayer.style.top = newTop;
+      panelRoot.style.top = newTop;
     });
     observer.observe(document.body, { attributes: true, attributeFilter: ['style'] });
   }
@@ -722,7 +764,7 @@ export function createControllerPanel(options = {}) {
    */
   function setSelectedElementSuggestions() {
     const themeElement = defaultThemeElement;
-    const layer = controllerLayer.querySelector(`#${IDS.controllerElementSuggestions}`);
+    const layer = panelRoot.querySelector(`#${IDS.controllerElementSuggestions}`);
     layer.innerHTML = '';
 
     if (themeElement === null) {
@@ -750,7 +792,7 @@ export function createControllerPanel(options = {}) {
    */
   function setSelectedElementTemplateFilePath() {
     const themeElement = defaultThemeElement;
-    const target = controllerLayer.querySelector(`#${IDS.controllerElementTemplateFilePath}`);
+    const target = panelRoot.querySelector(`#${IDS.controllerElementTemplateFilePath}`);
     target.innerHTML = '';
 
     if (themeElement === null || !themeElement.filePath) {
@@ -774,7 +816,7 @@ export function createControllerPanel(options = {}) {
    * @returns {void}
    */
   function updateActiveElement() {
-    const layer = controllerLayer.querySelector(`#${IDS.controllerActiveElementInfo}`);
+    const layer = panelRoot.querySelector(`#${IDS.controllerActiveElementInfo}`);
     setElementInfo(activeThemeElement, layer, 'active');
   }
 
@@ -787,7 +829,7 @@ export function createControllerPanel(options = {}) {
    * @returns {void}
    */
   function updateSelectedElement() {
-    const layer = controllerLayer.querySelector(`#${IDS.controllerElementInfo}`);
+    const layer = panelRoot.querySelector(`#${IDS.controllerElementInfo}`);
     setElementInfo(defaultThemeElement, layer, 'selected');
     setSelectedElementSuggestions();
     setSelectedElementTemplateFilePath();
@@ -804,7 +846,7 @@ export function createControllerPanel(options = {}) {
    * @returns {void}
    */
   function setTabCue() {
-    const button = controllerLayer.querySelector(`#${IDS.controllerButtonSelected}`);
+    const button = panelRoot.querySelector(`#${IDS.controllerButtonSelected}`);
     if (!button) return;
 
     const emptyObjectTypeClass = CLASS_NAMES.objectTypeTyped('');
@@ -872,8 +914,8 @@ export function createControllerPanel(options = {}) {
    * are meaningful): wires the resize handle, sizes the panel, positions
    * it per its activation state, renders the initial Active/Selected
    * Element panels, and activates the "Selected" tab. Called once by the
-   * consumer (see `src/index.js`) after appending `controllerLayer` to the
-   * document.
+   * consumer (see `src/index.js`) after appending the panel's `controllerLayer`
+   * (the shadow host) to the document.
    *
    * @returns {void}
    */
@@ -893,14 +935,18 @@ export function createControllerPanel(options = {}) {
 
   return {
     /**
-     * The panel's root element, built synchronously above. Append it to
-     * the document once; the getter just exposes the closured value (it's
-     * never reassigned after construction).
+     * The Shadow DOM host built synchronously above (`panelHost`) — append
+     * it to the document once. All of the panel's actual markup lives
+     * inside its shadow root, sealed off from the host page's CSS in both
+     * directions (see `generateControllerLayer`'s doc comment); this host
+     * element itself carries no meaningful classes, so it's not a useful
+     * target for external styling either. The getter just exposes the
+     * closured value — it's never reassigned after construction.
      *
      * @returns {Element}
      */
     get controllerLayer() {
-      return controllerLayer;
+      return panelHost;
     },
     executePostActivation,
     setActiveThemeElement,

@@ -46,11 +46,17 @@ As a plain script (no bundler), once built:
 <script>DrupalVisualDebugger.init();</script>
 ```
 
-Both stylesheets are required: `visual-debugger.min.css` is this package's
-own compiled styles (layout, color, sizing — all driven by CSS custom
-properties, see "CSS" below); `visual-debugger.fonts.css` is the vendored
-icon font's `@font-face` + glyph declarations (see "Icon font" below). They
-ship as two separate files rather than one bundle on purpose.
+Both stylesheets are required for the **overlay** (the highlighted boxes
+drawn over inspected page elements) — `visual-debugger.min.css` is this
+package's own compiled styles (layout, color, sizing — all driven by CSS
+custom properties, see "CSS" below); `visual-debugger.fonts.css` is the
+vendored icon font's `@font-face` + glyph declarations (see "Icon font"
+below). They ship as two separate files rather than one bundle on purpose.
+
+The **controller panel** (the fly-out inspector) doesn't need either file —
+it renders behind a Shadow DOM boundary with its own embedded copy of both,
+so it's fully self-contained and immune to the host page's CSS in both
+directions. See "Shadow DOM" below.
 
 ## Build
 
@@ -65,6 +71,12 @@ Produces, all under `dist/`:
 - `visual-debugger.{css,min.css}` (+ `.css.map`) — this package's own styles, compiled from `sass/visual-debugger.scss`.
 - `visual-debugger.fonts.css` — the vendored icon font's CSS, copied as-is (see "Icon font" below).
 - `fonts/` — the icon font's binary files (`.ttf`/`.woff`/`.svg`), copied as-is.
+
+Along the way, `build.mjs` also (re)generates `generated/panelStyles.css` —
+a build-time-only, gitignored file (kept out of `src/`, which is otherwise
+all hand-authored) that `controllerPanel.js` imports directly; it's not
+part of the published package on its own, only embedded into the JS
+bundles above. See "Shadow DOM" below.
 
 ## Source map — old module file to new module
 
@@ -155,6 +167,71 @@ and replace every file inside `fonts/visual-debugger-icons/` with the new
 package's contents (keep the folder name). Then `npm run build` — no code
 changes needed elsewhere unless you renamed or removed an icon class that's
 referenced in `src/constants.js` (e.g. `CLASS_NAMES.iconEye`).
+
+### Open Sans
+
+The panel's typography uses [Open Sans Semi Condensed](https://fonts.google.com/specimen/Open+Sans),
+vendored as static TTFs in `fonts/open-sans/` (downloaded from Google
+Fonts, as-is — not fetched at build time, for the same reason as the icon
+font: the panel is self-contained and shouldn't depend on Google's CDN
+being reachable, or on a `<link>`/`@import` sitting in the host page's
+`<head>` reliably applying inside a Shadow DOM). Only three weights are
+vendored/embedded: Light (300, used for headings —
+`--vd-font-family--title`/`--vd-font-weight--title`), Medium (500, body
+content — `--vd-font-family--content`/`--vd-font-weight--content`), and
+Bold (700, e.g. the active tab). There's no true Regular/400 cut of this
+condensed style, so content is deliberately set to weight 500 rather than
+mislabeling the Medium face as 400. Italic cuts were also downloaded but
+aren't embedded — nothing in the panel renders italic text today.
+
+`build.mjs`'s `buildOpenSansFontFaceCss()` converts each vendored TTF to
+WOFF2 (via the `wawoff2` devDependency — pure JS/WASM, no native build
+step) and base64-embeds the result directly into
+`generated/panelStyles.css`, alongside the icon font (see "Shadow DOM"
+below and above). WOFF2 roughly halves the size versus embedding the raw
+TTFs. To change weights or swap in a different Google Font: replace the
+files in `fonts/open-sans/`, update the `OPEN_SANS_FACES` list in
+`build.mjs` to match, and update `--font-family--title`/`--font-family--content`
+in `sass/base/_variables.scss` if the family name changed.
+
+## Shadow DOM
+
+The controller panel (`createControllerPanel` /
+`render/controllerPanel.js`) renders inside a Shadow DOM (`{ mode: 'open'
+}`), so the host page's CSS can't affect anything inside the panel, and
+nothing the panel declares — including every `--vd-*` custom property —
+can affect anything outside it. Concretely:
+
+- `panel.controllerLayer` (what you append to the document, e.g. in
+  `init()`) is a bare host `<div id="visual-debugger--controller-host">`
+  with no `visual-debugger*` classes of its own — nothing for a page's CSS
+  to coincidentally match. All the real panel markup lives inside its
+  `.shadowRoot`.
+- That shadow root's own `<style>` starts with `:host { all: initial; }`,
+  which resets every *inherited* CSS property (font, color, line-height,
+  and any `--vd-*` custom property a page might set on `:root`/`body`) at
+  the boundary. Without this, inherited properties would still cross into
+  the shadow tree by normal CSS inheritance — Shadow DOM's rule-scoping on
+  its own only stops *matched* rules from crossing, not inheritance.
+- That same stylesheet is a self-contained copy of the panel's compiled
+  CSS plus the icon font and Open Sans (base64-embedded WOFF2, converted
+  from the vendored TTFs) — see `build.mjs`'s `buildPanelStyles()` and
+  "Icon font" / "Open Sans" above for why both fonts are embedded rather
+  than linked by a relative path or loaded from Google (a relative `url()`
+  inside an injected `<style>` resolves against the *host page's* URL, not
+  this library's, so the normal relative-path font CSS would 404 if reused
+  as-is).
+- The overlay (`createOverlayEngine` / `render/overlayLayer.js`) is
+  deliberately **not** behind a Shadow DOM boundary — its highlighted boxes
+  are positioned over real page elements in the light DOM and don't need
+  this. It still relies on the standalone `visual-debugger.min.css` /
+  `.fonts.css` files being linked (see "Usage" above).
+- One consequence: overriding a `--vd-*` custom property from the host
+  page's own CSS (e.g. `:root { --vd-color--object-type--node: red; }`)
+  still reaches the overlay, but no longer reaches the panel — theming the
+  panel now requires either changing `sass/base/_variables.scss` and
+  rebuilding, or (not currently wired up) exposing a way to pass extra CSS
+  into the embedded stylesheet.
 
 ## License
 

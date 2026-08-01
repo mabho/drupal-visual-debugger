@@ -340,6 +340,7 @@ $color--shadow: $color--gray;
 
   // Content Auto-scroll.
   --#{$prefix}controller--content-auto-scroll--background-color: transparent;
+  --#{$prefix}controller--content-auto-scroll--flex-direction: column;
   --#{$prefix}controller--content-auto-scroll--margin: 0;
   --#{$prefix}controller--content-auto-scroll--overflow-y: auto;
   --#{$prefix}controller--content-auto-scroll--padding: 0;

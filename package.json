@@ -35,6 +35,7 @@
   "license": "GPL-2.0-or-later",
   "devDependencies": {
     "esbuild": "^0.24.0",
-    "sass": "^1.66.1"
+    "sass": "^1.66.1",
+    "wawoff2": "^2.0.1"
   }
 }

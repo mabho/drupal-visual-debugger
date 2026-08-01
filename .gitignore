@@ -7,5 +7,10 @@
 # Compiled files folder
 /dist/
 
+# Generated at build time (embedded into the controller panel's Shadow DOM
+# — see build.mjs's buildPanelStyles()); not authored, not the source of
+# truth.
+/generated/
+
 # Compiled files
 package-lock.json

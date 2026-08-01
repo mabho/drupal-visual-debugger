@@ -73,7 +73,7 @@
     }
 
     // When the controller is deactivated...
-    body.visual-debugger--deactivated & {
+    &[data-controller-activated='false'] {
       &:hover {
         transform: var(--#{variables.$prefix}controller--transform--on-deactivated);
       }
@@ -90,7 +90,7 @@
         transform var(--#{variables.$prefix}transition-speed);
 
       // When controller is deactivated.
-      body.visual-debugger--deactivated & {
+      @at-root [data-controller-activated=false]#{&} {
         background-color: var(--#{variables.$prefix}controller--activation-form--background-color--on-deactivated);
         transform: var(--#{variables.$prefix}controller--activation-form--transform--on-deactivated);
       }
@@ -106,6 +106,9 @@
 
     .content-auto-scroll {
       background-color: var(--#{variables.$prefix}controller--content-auto-scroll--background-color);
+      display: flex;
+      flex: 1;
+      flex-direction: var(--#{variables.$prefix}controller--content-auto-scroll--flex-direction);
       margin: var(--#{variables.$prefix}controller--content-auto-scroll--margin);
       overflow-y: var(--#{variables.$prefix}controller--content-auto-scroll--overflow-y);
       padding: var(--#{variables.$prefix}controller--content-auto-scroll--padding);
@@ -359,7 +362,7 @@
     top: var(--#{variables.$prefix}base--top);
     z-index: var(--#{variables.$prefix}base--z-index);
 
-    body.visual-debugger--deactivated & {
+    @at-root [data-controller-activated=false]#{&} {
       display: var(--#{variables.$prefix}base--display--on-deactivated);
       pointer-events: var(--#{variables.$prefix}base--pointer-events--on-deactivated);
     }
@@ -434,7 +437,7 @@
     width: var(--#{variables.$prefix}click-drag-button--size);
     z-index: var(--#{variables.$prefix}click-drag-button--z-index);
 
-    body.visual-debugger--activated & {
+    @at-root [data-controller-activated=true]#{&} {
       background-color: var(--#{variables.$prefix}click-drag-button--background-color--on-activated);
       cursor: var(--#{variables.$prefix}click-drag-button--cursor--on-activated);
       opacity: var(--#{variables.$prefix}click-drag-button--opacity--on-activated);

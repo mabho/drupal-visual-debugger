@@ -1,6 +1,7 @@
 import * as esbuild from 'esbuild';
 import * as sass from 'sass';
-import { writeFileSync, cpSync } from 'node:fs';
+import { compress as compressWoff2 } from 'wawoff2';
+import { writeFileSync, readFileSync, cpSync, mkdirSync } from 'node:fs';
 
 const watch = process.argv.includes('--watch');
 
@@ -9,6 +10,10 @@ const shared = {
   bundle: true,
   sourcemap: true,
   target: ['es2019'],
+  // Lets controllerPanel.js `import panelStyles from
+  // '../../generated/panelStyles.css'` and get its contents as a plain
+  // string (esbuild's built-in text loader) — see buildPanelStyles() below.
+  loader: { '.css': 'text' },
 };
 
 const jsBuilds = [
@@ -33,6 +38,109 @@ const jsBuilds = [
     minify: true,
   },
 ];
+
+// Static weights vendored in fonts/open-sans/ (Google Fonts' "Open Sans
+// Semi Condensed" cut, as downloaded — see README "Open Sans"). Named
+// honestly by their actual OpenType weight: the "Medium" file is 500, not
+// 400 — there is no true Regular/400 cut of this condensed style, so the
+// content font-weight variable in _variables.scss is set to 500 to match
+// rather than mislabeling this face as 400. Italic cuts were also
+// downloaded but aren't embedded — nothing in the panel's UI renders
+// italic text today; add an entry here if that changes.
+const OPEN_SANS_FACES = [
+  { file: 'OpenSans_SemiCondensed-Light.ttf', weight: 300 },
+  { file: 'OpenSans_SemiCondensed-Medium.ttf', weight: 500 },
+  { file: 'OpenSans_SemiCondensed-Bold.ttf', weight: 700 },
+];
+
+/**
+ * Builds `@font-face` rules for the vendored Open Sans Semi Condensed
+ * weights, converting each TTF to WOFF2 (roughly half the size) and
+ * base64-embedding the result — same reasoning as the icon font's `src:`
+ * rewrite in `buildPanelStyles()`: a relative `url()` inside the panel's
+ * injected `<style>` would resolve against the *host page's* URL, not
+ * this library's.
+ *
+ * @returns {Promise<string>} The concatenated `@font-face` rules.
+ */
+async function buildOpenSansFontFaceCss() {
+  const faces = await Promise.all(
+    OPEN_SANS_FACES.map(async ({ file, weight }) => {
+      const ttf = readFileSync(`fonts/open-sans/${file}`);
+      const woff2 = await compressWoff2(ttf);
+      const base64 = Buffer.from(woff2).toString('base64');
+      return `@font-face {
+  font-family: 'Open Sans Semi Condensed';
+  font-style: normal;
+  font-weight: ${weight};
+  font-display: swap;
+  src: url('data:font/woff2;base64,${base64}') format('woff2');
+}`;
+    })
+  );
+  return faces.join('\n');
+}
+
+/**
+ * Generates `generated/panelStyles.css` — the styles the controller panel
+ * embeds into its own Shadow DOM (see `render/controllerPanel.js`), as
+ * opposed to `buildStyles()` below, which produces the standalone
+ * `dist/*.css` files consumed by the overlay in the light DOM. Lives in
+ * its own top-level `generated/` directory (gitignored, same treatment as
+ * `dist/`) rather than under `src/`, which is otherwise all hand-authored.
+ * Must run before the esbuild step, since `controllerPanel.js` imports
+ * this generated file directly.
+ *
+ * Four pieces get concatenated:
+ * 1. `:host { all: initial; }` — resets every inherited CSS property
+ *    (including any `--vd-*` custom property a page might set on `:root`)
+ *    at the shadow host boundary, so nothing from the host page leaks in
+ *    via inheritance (rule-based leakage is already blocked by Shadow DOM
+ *    itself, with no extra effort needed).
+ * 2. The vendored IcoMoon icon font's CSS, with its `src:` rewritten to a
+ *    single base64-embedded `data:` URI. This is necessary, not just
+ *    convenient: a relative `url()` inside a `<style>` element resolves
+ *    against the *host page's* URL, not this library's, so the icon font
+ *    files would 404 if this CSS were copied in unmodified. Only `woff` is
+ *    embedded (dropping the ttf/svg fallbacks IcoMoon also ships) — this
+ *    project already targets evergreen/es2019 browsers.
+ * 3. The vendored Open Sans weights' `@font-face` rules — see
+ *    `buildOpenSansFontFaceCss()`.
+ * 4. The panel's own compiled CSS (`sass/visual-debugger.scss`,
+ *    compressed) — identical source to `dist/visual-debugger.min.css`.
+ *
+ * @returns {Promise<void>}
+ */
+async function buildPanelStyles() {
+  const hostReset = ':host { all: initial; }';
+
+  const fontBase64 = readFileSync(
+    'fonts/visual-debugger-icons/fonts/visual-debugger-icons.woff'
+  ).toString('base64');
+  const iconsCssSource = readFileSync(
+    'fonts/visual-debugger-icons/style.css',
+    'utf8'
+  );
+  const embeddedIconsCss = iconsCssSource.replace(
+    /src:[\s\S]*?;/,
+    `src: url('data:font/woff;base64,${fontBase64}') format('woff');`
+  );
+
+  const openSansCss = await buildOpenSansFontFaceCss();
+
+  const panelCssResult = sass.compile('sass/visual-debugger.scss', {
+    style: 'compressed',
+  });
+
+  // Unlike esbuild's own `outfile` (which creates missing parent
+  // directories automatically), plain writeFileSync doesn't — and unlike
+  // dist/, nothing else creates generated/ before this runs.
+  mkdirSync('generated', { recursive: true });
+  writeFileSync(
+    'generated/panelStyles.css',
+    [hostReset, embeddedIconsCss, openSansCss, panelCssResult.css].join('\n')
+  );
+}
 
 function buildStyles() {
   // Compile Sass to plain CSS.
@@ -71,6 +179,10 @@ function buildStyles() {
 if (watch) {
   const { watch: watchFs } = await import('node:fs');
 
+  // Must exist before the first esbuild pass — controllerPanel.js imports
+  // it directly.
+  await buildPanelStyles();
+
   // esbuild's own context().watch() uses its Go binary's file watcher, which
   // doesn't reliably pick up changes in this environment. Rebuilding via
   // Node's fs.watch (same mechanism as the Sass watcher below) is reliable.
@@ -89,10 +201,13 @@ if (watch) {
   });
 
   buildStyles();
-  watchFs('sass', { recursive: true }, () => {
+  watchFs('sass', { recursive: true }, async () => {
     try {
       buildStyles();
-      console.log('Rebuilt styles.');
+      await buildPanelStyles();
+      // The panel's styles are embedded in the JS bundle, so a Sass change
+      // also needs a JS rebuild to take effect.
+      rebuildJs().then(() => console.log('Rebuilt styles.'));
     } catch (error) {
       console.error('Style rebuild failed:', error.message);
     }
@@ -100,6 +215,7 @@ if (watch) {
 
   console.log('Watching for changes (src/ and sass/ via fs.watch)...');
 } else {
+  await buildPanelStyles();
   await Promise.all(jsBuilds.map((options) => esbuild.build(options)));
   buildStyles();
 
