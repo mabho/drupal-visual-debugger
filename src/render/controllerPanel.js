@@ -56,6 +56,16 @@ export function createControllerPanel(options = {}) {
   // file) — that name describes the public contract ("append this"), not
   // this variable.
   let panelHost = null;
+  // Named handler references (rather than inline arrow functions) so
+  // destroy() can removeEventListener() them — these are registered on
+  // `document`, which outlives the panel, so they'd otherwise keep this
+  // whole closure alive indefinitely. Assigned once in generateSliderButton().
+  let handleSliderMouseMove = null;
+  let handleSliderMouseUp = null;
+  // The observer created in observeBodyOffset(), lifted here so destroy()
+  // can disconnect it — it watches document.body, not anything this panel
+  // owns/removes itself.
+  let bodyOffsetObserver = null;
 
   /**
    * The theme element the "Selected Element" panel should currently show:
@@ -662,16 +672,18 @@ export function createControllerPanel(options = {}) {
       isMouseDown = getControllerActivationStatus();
     });
 
-    document.addEventListener('mousemove', (event) => {
+    handleSliderMouseMove = (event) => {
       if (!isMouseDown) return;
       resizeControllerLayer(event.clientX);
-    });
+    };
+    document.addEventListener('mousemove', handleSliderMouseMove);
 
-    document.addEventListener('mouseup', () => {
+    handleSliderMouseUp = () => {
       if (!isMouseDown) return;
       isMouseDown = false;
       storage.set(STORAGE_KEYS.controllerWidth, panelRoot.style.width);
-    });
+    };
+    document.addEventListener('mouseup', handleSliderMouseUp);
 
     panelRoot.appendChild(button);
   }
@@ -701,12 +713,12 @@ export function createControllerPanel(options = {}) {
    * @returns {void}
    */
   function observeBodyOffset() {
-    const observer = new MutationObserver((mutations) => {
+    bodyOffsetObserver = new MutationObserver((mutations) => {
       if (!panelRoot) return;
       const newTop = mutations[0].target.style.paddingTop || 0;
       panelRoot.style.top = newTop;
     });
-    observer.observe(document.body, { attributes: true, attributeFilter: ['style'] });
+    bodyOffsetObserver.observe(document.body, { attributes: true, attributeFilter: ['style'] });
   }
 
   // ---- Info rendering ------------------------------------------------------
@@ -928,6 +940,29 @@ export function createControllerPanel(options = {}) {
     switchToTab(IDS.controllerElementSelected);
   }
 
+  /**
+   * Tears down everything this panel registered outside of `panelHost`
+   * itself, then removes `panelHost`. The two `document`-level slider
+   * listeners and the body-offset `MutationObserver` all outlive the
+   * panel's own DOM (they're registered on `document`/`document.body`,
+   * neither of which this panel ever removes), so without this they — and
+   * every closure they hold onto (`panelRoot`, `storage`, `strings`, this
+   * entire factory's scope) — would keep running, and keep the panel
+   * alive in memory, forever. Everything else (tab/list/filter row
+   * listeners, the activation checkbox, etc.) lives inside `panelHost`'s
+   * shadow tree and is removed along with it, with no separate cleanup
+   * needed.
+   *
+   * @returns {void}
+   */
+  function destroy() {
+    if (handleSliderMouseMove) document.removeEventListener('mousemove', handleSliderMouseMove);
+    if (handleSliderMouseUp) document.removeEventListener('mouseup', handleSliderMouseUp);
+    bodyOffsetObserver?.disconnect();
+    document.body.classList.remove(CLASS_NAMES.controllerActivated, CLASS_NAMES.controllerDeactivated);
+    panelHost?.remove();
+  }
+
   // ---- Build ----------------------------------------------------------------
 
   generateControllerLayer();
@@ -954,5 +989,6 @@ export function createControllerPanel(options = {}) {
     setDefaultThemeElement,
     resetDefaultThemeElement,
     getSelectedThemeElement,
+    destroy,
   };
 }

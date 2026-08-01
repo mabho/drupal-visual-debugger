@@ -25,11 +25,13 @@ import { CLASS_NAMES, LAYER_ATTRIBUTES } from '../constants.js';
  *   setThemeElementVisible: (themeElement: import('../model/themeElement.js').ThemeElement, visible: boolean) => void,
  *   hoverThemeElement: (themeElement: import('../model/themeElement.js').ThemeElement) => void,
  *   unhoverThemeElement: (themeElement: import('../model/themeElement.js').ThemeElement) => void,
+ *   destroy: () => void,
  * }} `baseLayer` is the container element holding every instance layer —
  *   append it to the document once. The rest of the shape is the API
  *   surface the controller panel's List/Filters tabs drive directly (see
  *   each named function below for details); `attachControllerHooks` wires
- *   up the reverse direction (overlay → panel notifications).
+ *   up the reverse direction (overlay → panel notifications); `destroy`
+ *   tears all of this back down (see its own doc comment).
  */
 export function createOverlayEngine({ themeElements }) {
   const baseLayer = document.createElement('div');
@@ -44,7 +46,7 @@ export function createOverlayEngine({ themeElements }) {
     baseLayer.appendChild(instanceLayer);
   });
 
-  observePositionChanges(themeElements);
+  const { resizeObserver, mutationObserver } = observePositionChanges(themeElements);
 
   /**
    * Creates the overlay box painted on top of a single theme element's
@@ -249,7 +251,12 @@ export function createOverlayEngine({ themeElements }) {
    * @param {import('../model/themeElement.js').ThemeElement[]} elements
    *   Theme elements to keep aligned; each must already have both
    *   `instanceLayer` and `dataNode` set.
-   * @returns {void}
+   * @returns {{ resizeObserver: ResizeObserver, mutationObserver: MutationObserver }}
+   *   Both observers, so the caller can `disconnect()` them on `destroy()`
+   *   — neither is tied to an element this module ever removes itself
+   *   (the `ResizeObserver` watches the real page's `dataNode`s, and the
+   *   `MutationObserver` watches `document.body`), so without this they'd
+   *   keep running, and keep this whole closure alive, forever.
    */
   function observePositionChanges(elements) {
     const resizeObserver = new ResizeObserver((entries) => {
@@ -266,6 +273,35 @@ export function createOverlayEngine({ themeElements }) {
     mutationObserver.observe(document.body, {
       attributes: true,
       attributeFilter: ['style'],
+    });
+
+    return { resizeObserver, mutationObserver };
+  }
+
+  /**
+   * Tears down everything this engine created: disconnects both observers
+   * (without this, they'd keep running against the real page's elements
+   * forever, even after `baseLayer` is gone), removes `baseLayer` from the
+   * document (which takes every instance layer, and the mouseenter/
+   * mouseleave/click listeners attached directly to them, with it — those
+   * don't need separate removal since nothing outside this removed
+   * subtree references them), strips the `data-vd-id` attribute the
+   * parser left on each real page element, and clears the `instanceLayer`/
+   * `listRow` references each `themeElement` was carrying so a stale
+   * `themeElements` array a consumer might still be holding doesn't keep
+   * detached DOM/closures alive.
+   *
+   * @returns {void}
+   */
+  function destroy() {
+    resizeObserver.disconnect();
+    mutationObserver.disconnect();
+    baseLayer.remove();
+
+    themeElements.forEach((themeElement) => {
+      themeElement.dataNode?.removeAttribute(LAYER_ATTRIBUTES.layerId);
+      themeElement.instanceLayer = null;
+      themeElement.listRow = null;
     });
   }
 
@@ -288,6 +324,7 @@ export function createOverlayEngine({ themeElements }) {
     setThemeElementVisible: setVisible,
     hoverThemeElement,
     unhoverThemeElement,
+    destroy,
   };
 }
 

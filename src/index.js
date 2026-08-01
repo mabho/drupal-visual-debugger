@@ -23,10 +23,13 @@ import { CLASS_NAMES, IDS, LAYER_ATTRIBUTES, STORAGE_KEYS } from './constants.js
  *   baseLayer: Element,
  *   controllerLayer: Element,
  *   panel: ReturnType<typeof createControllerPanel>,
+ *   destroy: () => void,
  * } | null} The parsed theme elements plus the overlay/panel roots that
  *   were appended to `document.body`, or `null` if `root` was already
  *   initialized (the no-op case above) — in which case nothing was
- *   built or appended.
+ *   built or appended. Call `destroy()` to fully tear this instance down
+ *   (see its own doc comment) — after that, `init()` can be called again
+ *   on the same `root` for a clean restart.
  */
 export function init(options = {}) {
   const root = options.root ?? document.body;
@@ -53,11 +56,29 @@ export function init(options = {}) {
   document.body.appendChild(panel.controllerLayer);
   panel.executePostActivation();
 
+  /**
+   * Fully tears this instance down: disconnects the overlay's observers
+   * and removes its `baseLayer` (`overlay.destroy()`), removes the
+   * two `document`-level slider listeners and the body-offset observer
+   * and removes the panel's shadow host (`panel.destroy()`), and clears
+   * the `initialized` guard from `root` so a later `init()` call on the
+   * same `root` runs fresh instead of silently no-op'ing. Idempotent —
+   * every step it calls is safe to run more than once.
+   *
+   * @returns {void}
+   */
+  function destroy() {
+    overlay.destroy();
+    panel.destroy();
+    root.classList.remove(CLASS_NAMES.initialized);
+  }
+
   return {
     themeElements,
     baseLayer: overlay.baseLayer,
     controllerLayer: panel.controllerLayer,
     panel,
+    destroy,
   };
 }
 

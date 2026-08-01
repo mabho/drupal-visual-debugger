@@ -80,7 +80,14 @@ The core split is **parsing vs. rendering vs. everything-injectable**:
   appended to the document, exposed externally as `controllerLayer`.
 - `src/index.js` (`init()`) — wires the three together: parse → build overlay
   → build panel → `overlay.attachControllerHooks(panel)`. Idempotent per
-  root element (`CLASS_NAMES.initialized` guard).
+  root element (`CLASS_NAMES.initialized` guard). Returns a `destroy()`
+  that composes `overlay.destroy()` + `panel.destroy()` and clears that
+  guard. Each module's `destroy()` only tears down what *it* registered
+  outside its own removable root element — anything attached to `document`/
+  `document.body` (both persistent observers, the panel's two slider
+  listeners) has to be disconnected/removed explicitly, or it — and the
+  whole closure it holds onto — leaks forever even after the visible DOM
+  is gone.
 
 **Injection points, by design** (so the same code runs in a plain browser
 page, inside the Drupal module, or inside a Chrome extension content script):
