@@ -23,6 +23,8 @@
     display: flex;
     flex-direction: var(--#{variables.$prefix}controller--flex-direction);
     font-size: var(--#{variables.$prefix}controller--font-size);
+    font-family: var(--#{variables.$prefix}font-family--content);
+    font-weight: var(--#{variables.$prefix}font-weight--content);
     max-width: var(--#{variables.$prefix}controller--max-width);
     min-width: var(--#{variables.$prefix}controller--min-width);
     padding: var(--#{variables.$prefix}controller--padding);
@@ -35,6 +37,8 @@
     z-index: var(--#{variables.$prefix}controller--z-index);
 
     h1, h2, h3, h4 {
+      font-family: var(--#{variables.$prefix}font-family--title);
+      font-weight: var(--#{variables.$prefix}font-weight--title);
       margin-bottom: var(--#{variables.$prefix}h--margin-bottom);
       margin-top: var(--#{variables.$prefix}h--margin-top);
     }

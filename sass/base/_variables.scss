@@ -71,8 +71,19 @@ $color--shadow: $color--gray;
   --#{$prefix}z-index--base: 10000;
   --#{$prefix}transition-speed: .25s;
 
-  // Fonts
+  // Fonts. Open Sans Semi Condensed is vendored (fonts/open-sans/, as
+  // downloaded from Google Fonts — see README "Open Sans") and embedded
+  // into the panel's Shadow DOM stylesheet at build time (build.mjs's
+  // buildOpenSansFontFaceCss()); it isn't loaded from Google or relied on
+  // as a locally-installed font. Only Light (300), Medium (500), and Bold
+  // (700) are embedded — there's no true Regular/400 cut of this
+  // condensed style, so --font-weight--content below is 500, not 400.
+  --#{$prefix}font-family--title: 'Open Sans Semi Condensed', sans-serif;
+  --#{$prefix}font-family--content: 'Open Sans Semi Condensed', sans-serif;
   --#{$prefix}font-family--monospace: 'Courier New', monospace;
+  --#{$prefix}font-weight--title: 300;
+  --#{$prefix}font-weight--content: 500;
+  --#{$prefix}font-weight--bold: 700;
 
   // Colors.
 
@@ -356,13 +367,13 @@ $color--shadow: $color--gray;
   --#{$prefix}tabbed-navigation--tab--column-gap: calc(var(--#{$prefix}controller--gutter) * .3);
   --#{$prefix}tabbed-navigation--tab--cursor: pointer;
   --#{$prefix}tabbed-navigation--tab--font-size: var(--#{$prefix}controller--font-size);
-  --#{$prefix}tabbed-navigation--tab--font-weight: 500;
+  --#{$prefix}tabbed-navigation--tab--font-weight: var(--#{$prefix}font-weight--content);
   --#{$prefix}tabbed-navigation--tab--margin-right: #{functions.to-rem(-2px)};
   --#{$prefix}tabbed-navigation--tab--padding: calc(var(--#{$prefix}controller--gutter) * .4) calc(var(--#{$prefix}controller--gutter) * .6);
   --#{$prefix}tabbed-navigation--tab--background-color--hover: var(--#{$prefix}color--gray-30);
   --#{$prefix}tabbed-navigation--tab--background-color--active: var(--#{$prefix}color--gray-20);
   --#{$prefix}tabbed-navigation--tab--color--active: var(--#{$prefix}tabbed-navigation--tab--color);
-  --#{$prefix}tabbed-navigation--tab--font-weight--active: 700;
+  --#{$prefix}tabbed-navigation--tab--font-weight--active: var(--#{$prefix}font-weight--bold);
   --#{$prefix}tabbed-navigation--tab--transform--active: translateY(#{functions.to-rem(2px)});
   --#{$prefix}tabbed-navigation--tab--transform--not-active: translateY(#{functions.to-rem(5px)});
   --#{$prefix}tabbed-navigation--tab--z-index--active: 5;
@@ -387,7 +398,7 @@ $color--shadow: $color--gray;
   --#{$prefix}list-element--list-item--activation--cursor: pointer;
   --#{$prefix}list-element--list-item--activation--disabled--text-decoration: line-through;
   --#{$prefix}list-element--list-item--activation--disabled--opacity: .65;
-  --#{$prefix}list-element--list-item--activation--font-weight: 500;
+  --#{$prefix}list-element--list-item--activation--font-weight: var(--#{$prefix}font-weight--content);
   --#{$prefix}list-element--list-item--activation--line-height: 1.5;
   --#{$prefix}list-element--list-item--activation--padding: 0;
   --#{$prefix}list-element--list-item--visibility--cursor: pointer;
@@ -402,7 +413,7 @@ $color--shadow: $color--gray;
   --#{$prefix}filters-element--filter-item--activation--align-items: center;
   --#{$prefix}filters-element--filter-item--activation--column-gap: calc(var(--#{$prefix}controller--gutter) * .25);
   --#{$prefix}filters-element--filter-item--activation--cursor: pointer;
-  --#{$prefix}filters-element--filter-item--activation--font-weight: 500;
+  --#{$prefix}filters-element--filter-item--activation--font-weight: var(--#{$prefix}font-weight--content);
   --#{$prefix}filters-element--filter-item--activation--line-height: 1.5;
   --#{$prefix}filters-element--filter-item--activation--justify-content: space-between;
   --#{$prefix}filters-element--filter-item--activation--padding: calc(var(--#{$prefix}controller--gutter) * .125) calc(var(--#{$prefix}controller--gutter) * .5);
