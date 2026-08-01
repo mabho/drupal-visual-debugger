@@ -197,8 +197,8 @@ export function createControllerPanel(options = {}) {
     const visibility = createOnOffSwitch({
       checked: true,
       wrapperClasses: [CLASS_NAMES.listItemVisibility],
-      iconOn: CLASS_NAMES.iconEye,
-      iconOff: CLASS_NAMES.iconEyeBlocked,
+      iconOn: CLASS_NAMES.iconToggleOn,
+      iconOff: CLASS_NAMES.iconToggleOff,
     });
 
     // Syncs this row's own visibility switch + disabled look, without
@@ -267,8 +267,8 @@ export function createControllerPanel(options = {}) {
         checked: true,
         wrapperClasses: [CLASS_NAMES.filtersElementItemActivation, CLASS_NAMES.objectType, CLASS_NAMES.objectTypeTyped(type)],
         wrapperAttributes: { [LAYER_ATTRIBUTES.visible]: 'true' },
-        iconOn: CLASS_NAMES.iconEye,
-        iconOff: CLASS_NAMES.iconEyeBlocked,
+        iconOn: CLASS_NAMES.iconToggleOn,
+        iconOff: CLASS_NAMES.iconToggleOff,
         iconBullet: CLASS_NAMES.iconSquare,
         labelFirst: false,
       });
@@ -297,8 +297,8 @@ export function createControllerPanel(options = {}) {
       label: strings.allElements,
       checked: true,
       wrapperClasses: [CLASS_NAMES.filtersElementItemActivation],
-      iconOn: CLASS_NAMES.iconEye,
-      iconOff: CLASS_NAMES.iconEyeBlocked,
+      iconOn: CLASS_NAMES.iconToggleOn,
+      iconOff: CLASS_NAMES.iconToggleOff,
     });
 
     allSwitch.wrapper.addEventListener('click', () => {

@@ -59,6 +59,8 @@ export const CLASS_NAMES = {
   iconSelectedFalse: 'icon-selected-false',
   iconEye: 'icon-eye',
   iconEyeBlocked: 'icon-eye-blocked',
+  iconToggleOn: 'icon-toggle-on',
+  iconToggleOff: 'icon-toggle-off',
   iconControllerActivated: 'icon-controller-activated',
   iconControllerDeactivated: 'icon-controller-deactivated',
   iconCopyToClipboard: 'icon-copy',

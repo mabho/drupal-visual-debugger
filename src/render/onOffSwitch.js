@@ -64,7 +64,14 @@ export function createOnOffSwitch({
   );
 
   if (label) {
+    // Every switch needs its own id for the label association below —
+    // there can be many of these (one per List/Filters row) — matching the
+    // original module's generateOnOffSwitch, which did the same via its own
+    // generateUniqueIdentifier().
+    input.id = `vd-switch-${Math.random().toString(36).substring(7)}`;
+
     const labelEl = document.createElement('label');
+    labelEl.setAttribute('for', input.id);
     labelEl.style.pointerEvents = 'none';
     labelEl.textContent = label;
     if (labelFirst) {

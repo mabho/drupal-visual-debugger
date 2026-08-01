@@ -257,10 +257,16 @@
         display: flex;
         flex-direction: var(--#{variables.$prefix}list-element--list-item--flex-direction);
         gap: var(--#{variables.$prefix}list-element--list-item--gap);
-        justify-content: flex-start;
+        justify-content: var(--#{variables.$prefix}list-element--list-item--justify-content);
         line-height: var(--#{variables.$prefix}list-element--list-item--line-height);
 
         &__activation {
+          align-items: var(--#{variables.$prefix}list-element--list-item--activation--align-items);
+          column-gap: var(--#{variables.$prefix}list-element--list-item--activation--column-gap);
+          cursor: var(--#{variables.$prefix}list-element--list-item--activation--cursor);
+          display: flex;
+          flex: 1;
+          flex-direction: row;
           font-weight: var(--#{variables.$prefix}list-element--list-item--activation--font-weight);
           line-height: inherit;
 
@@ -292,8 +298,10 @@
         }
 
         &__visibility {
+          cursor: var(--#{variables.$prefix}list-element--list-item--visibility--cursor);
           margin-left: var(--#{variables.$prefix}list-element--list-item--visibility--margin-left);
           flex: 0 0 28px;
+          display: flex;
         }
       }
     }
@@ -312,6 +320,7 @@
       &-item {
         &__activation {
           align-items: var(--#{variables.$prefix}filters-element--filter-item--activation--align-items);
+          column-gap: var(--#{variables.$prefix}filters-element--filter-item--activation--column-gap);
           cursor: var(--#{variables.$prefix}filters-element--filter-item--activation--cursor);
           display: flex;
           font-weight: var(--#{variables.$prefix}filters-element--filter-item--activation--font-weight);
@@ -321,7 +330,10 @@
 
           &[data-vd-visible='false'] {
             opacity: var(--#{variables.$prefix}list-element--list-item--activation--disabled--opacity);
-            text-decoration: var(--#{variables.$prefix}list-element--list-item--activation--disabled--text-decoration);
+
+            label {
+              text-decoration: var(--#{variables.$prefix}list-element--list-item--activation--disabled--text-decoration);
+            }
           }
 
           label {

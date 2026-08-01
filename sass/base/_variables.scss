@@ -228,7 +228,7 @@ $color--shadow: $color--gray;
   --#{$prefix}checkbox-toggle--height: var(--#{$prefix}checkbox-toggle--width);
   --#{$prefix}checkbox-toggle--opacity: 0;
   --#{$prefix}checkbox-toggle--position: absolute;
-  --#{$prefix}checkbox-toggle--width: 2rem;
+  --#{$prefix}checkbox-toggle--width: 1.5rem;
 
   // Shadow.
   --#{$prefix}shadow--transparency: .2;
@@ -381,12 +381,17 @@ $color--shadow: $color--gray;
   --#{$prefix}list-element--list-item--gap: calc(var(--#{$prefix}controller--gutter) * .25);
   --#{$prefix}list-element--list-item--flex-direction: row;
   --#{$prefix}list-element--list-item--line-height: 1.5;
+  --#{$prefix}list-element--list-item--justify-content: space-between;
+  --#{$prefix}list-element--list-item--activation--align-items: center;
+  --#{$prefix}list-element--list-item--activation--column-gap: calc(var(--#{$prefix}controller--gutter) * .25);
+  --#{$prefix}list-element--list-item--activation--cursor: pointer;
   --#{$prefix}list-element--list-item--activation--disabled--text-decoration: line-through;
   --#{$prefix}list-element--list-item--activation--disabled--opacity: .65;
   --#{$prefix}list-element--list-item--activation--font-weight: 500;
   --#{$prefix}list-element--list-item--activation--line-height: 1.5;
   --#{$prefix}list-element--list-item--activation--padding: 0;
-  --#{$prefix}list-element--list-item--visibility--margin-left: auto;
+  --#{$prefix}list-element--list-item--visibility--cursor: pointer;
+  --#{$prefix}list-element--list-item--visibility--margin-left: 0;
 
   // Filters.
   --#{$prefix}icon--font-size--x-small: calc(var(--#{$prefix}icon--font-size) * .75);
@@ -395,11 +400,12 @@ $color--shadow: $color--gray;
   --#{$prefix}filters-element--content--flex-direction: column;
   --#{$prefix}filters-element--content--gap: calc(var(--#{$prefix}controller--gutter) * .25);
   --#{$prefix}filters-element--filter-item--activation--align-items: center;
+  --#{$prefix}filters-element--filter-item--activation--column-gap: calc(var(--#{$prefix}controller--gutter) * .25);
   --#{$prefix}filters-element--filter-item--activation--cursor: pointer;
   --#{$prefix}filters-element--filter-item--activation--font-weight: 500;
   --#{$prefix}filters-element--filter-item--activation--line-height: 1.5;
   --#{$prefix}filters-element--filter-item--activation--justify-content: space-between;
-  --#{$prefix}filters-element--filter-item--activation--padding: 0 calc(var(--#{$prefix}controller--gutter) * .5);
+  --#{$prefix}filters-element--filter-item--activation--padding: calc(var(--#{$prefix}controller--gutter) * .125) calc(var(--#{$prefix}controller--gutter) * .5);
 }
 
 $object-type-colors: (
