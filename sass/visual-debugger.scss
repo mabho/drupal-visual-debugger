@@ -377,6 +377,7 @@
       background-color var(--#{variables.$prefix}transition-speed),
       margin var(--#{variables.$prefix}transition-speed),
       width var(--#{variables.$prefix}transition-speed),
+      opacity var(--#{variables.$prefix}transition-speed),
       height var(--#{variables.$prefix}transition-speed),
       top var(--#{variables.$prefix}transition-speed),
       left var(--#{variables.$prefix}transition-speed);
@@ -395,7 +396,7 @@
       }
     }
 
-    &[data-vd-visible='false'] {
+    .visual-debugger--deactivated & {
       opacity: 0;
       pointer-events: none;
     }
