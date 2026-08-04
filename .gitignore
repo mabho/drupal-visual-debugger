@@ -11,6 +11,3 @@
 # — see build.mjs's buildPanelStyles()); not authored, not the source of
 # truth.
 /generated/
-
-# Compiled files
-package-lock.json
