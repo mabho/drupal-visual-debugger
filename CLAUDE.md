@@ -10,9 +10,9 @@ theme-debug HTML comments. It has **no runtime dependency on Drupal** — it
 only parses the `THEME DEBUG` / `THEME HOOK` / `BEGIN OUTPUT` comments that
 Drupal's Twig debugging writes into the page.
 
-This is a rewrite/extraction of logic that lives in the sibling `visual_debugger`
-Drupal module (one directory up, `../`), which vendors this package's build
-output via `visual_debugger.libraries.yml`. It's also consumed by a separate
+This is a rewrite/extraction of the Javascript functionality inside the
+`visual_debugger` Drupal module, which will be updated to carry a static,
+compiled copy of the current library. It's also consumed by a separate
 Drupal Visual Debugger Chrome extension as a bundled dependency. Because of
 this dual consumption, **storage and translated strings are always injected**,
 never accessed directly (see Architecture below) — code here must stay usable
