@@ -1,0 +1,66 @@
+name: Release
+
+# Builds the package and attaches a ready-to-use zip (dist/ + package.json
+# + README + LICENSE) to a GitHub Release, for the consuming Chrome
+# extension project to download — sidesteps the git-archive limitation
+# that dist/ is gitignored and therefore never part of a source archive
+# (see the .gitattributes note in this repo): CI actually runs the build,
+# so dist/ exists as real files by the time the zip gets created.
+#
+# Triggers on any plain semver-shaped tag (e.g. 1.2.3), matching this
+# repo's existing tag convention (1.1.0, 1.2.0, 1.2.1 — no "v" prefix).
+# Push a tag to run it:
+#   git tag 1.2.3 && git push origin 1.2.3
+#
+# Note: this workflow file itself must already be present on the default
+# branch (main) before a tag push will trigger it — GitHub Actions only
+# evaluates tag-push triggers against workflows it already knows about
+# from the default branch, not ones that only exist on the tagged commit.
+
+on:
+  push:
+    tags:
+      - '*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Assemble release package
+        env:
+          PACKAGE_NAME: drupal-visual-debugger
+        run: |
+          set -euo pipefail
+          staging="staging/${PACKAGE_NAME}"
+          mkdir -p "$staging"
+          cp -r dist "$staging/dist"
+          cp package.json README.md LICENSE "$staging/"
+          (cd staging && zip -r "../${PACKAGE_NAME}-${GITHUB_REF_NAME}.zip" "${PACKAGE_NAME}")
+
+      - name: Upload release asset
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release create "${GITHUB_REF_NAME}" \
+            "drupal-visual-debugger-${GITHUB_REF_NAME}.zip" \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes
