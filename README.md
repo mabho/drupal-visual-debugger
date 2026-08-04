@@ -5,7 +5,7 @@ inspector panel from Drupal's Twig theme-debug output. This package has no
 dependency on Drupal at runtime — it only needs the debug HTML comments
 Drupal's Twig debugging writes into the page. It's consumed by:
 
-- the `visual_debugger` Drupal module (as a vendored/CDN'd library), and
+- the `visual_debugger` Drupal module; and
 - the Drupal Visual Debugger Chrome extension (as a bundled dependency).
 
 ## Requirements for the page being inspected
@@ -31,10 +31,26 @@ import { init, webStorageAdapter } from 'drupal-visual-debugger';
 
 init({
   root: document.body,
-  storage: webStorageAdapter, // swap for a chrome.storage adapter in the extension
-  strings: { activateDebugger: 'Ativar depurador' }, // override any default string
+  storage: webStorageAdapter, // swap for a chrome.storage adapter in the context of a Chrome browser extension.
+  strings: { activateDebugger: 'Start debugging' }, // override any default string.
   debug: false,
 });
+```
+
+`init()` returns `null` if `root` is already initialized, otherwise
+`{ themeElements, baseLayer, controllerLayer, panel, destroy }`. Call
+`destroy()` to fully remove the overlay and panel — every DOM node they
+added, every `ResizeObserver`/`MutationObserver`, and the two
+`document`-level listeners the panel's resize handle registers (these
+outlive the panel's own DOM, so skipping this would leak the whole
+instance in memory even after its elements are gone). `destroy()` also
+clears the `initialized` guard, so calling `init()` again on the same
+`root` afterward starts a clean instance rather than silently no-op'ing:
+
+```js
+const instance = init();
+// ...later, e.g. on SPA navigation away from a themed page...
+instance?.destroy();
 ```
 
 As a plain script (no bundler), once built:
@@ -78,49 +94,16 @@ all hand-authored) that `controllerPanel.js` imports directly; it's not
 part of the published package on its own, only embedded into the JS
 bundles above. See "Shadow DOM" below.
 
-## Source map — old module file to new module
-
-| Original (`visual_debugger/js/source/...`) | New location | Notes |
-| --- | --- | --- |
-| `vd.js` — comment parsing | `src/parser/drupalThemeDebugParser.js` | Regexes rewritten as literals (see below); Drupal-specific by design. |
-| `vd.js` — layer generation, resize/mutation observers | `src/render/overlayLayer.js` | Fully agnostic; no Drupal references. |
-| `themeElement.js` | `src/model/themeElement.js` | Now a plain factory (`createEmptyThemeElement()`), not a mutated-and-reset singleton. |
-| `controllerElement.js` | `src/render/controllerPanel.js` | `Drupal.t()` → injected `strings`; `localStorage` → injected `storage` adapter. |
-| (scattered `classNames`/`ids` in both files) | `src/constants.js` | Consolidated once; class names/IDs/attributes kept identical to the original for CSS compatibility. |
-
-## Notable changes from the original module
-
-- **Regex bug fix**: the theme-suggestions regex was built via
-  `new RegExp("...\\s*\\n\\s*...")` from a plain string, where `\s` isn't a
-  recognized JS string escape and silently became a literal `s`. It happened
-  to keep working because the `s*` was optional, but it wasn't matching
-  whitespace as intended. Rewritten as a real regex literal
-  (`/FILE NAME SUGGESTIONS:\s*\n\s*([^']*)\s*\n*\s*/`) in
-  `drupalThemeDebugParser.js`.
-- **No more shared mutable singleton**: `Drupal.themeElement` was a single
-  object mutated while scanning, then shallow-cloned per match and reset via
-  `Object.assign(this, this.initialState)`. The parser now just creates a
-  fresh plain object per match — same result, no shared state to reason
-  about.
-- **Storage and strings are injectable**: `controllerPanel.js` takes a
-  `storage` adapter and a `strings` object instead of calling
-  `localStorage` and `Drupal.t()` directly, so the same code works unchanged
-  inside a Chrome extension's content script.
-- **Factory instead of singleton**: `createControllerPanel()` returns an
-  independent instance via closures, rather than a shared object-literal
-  mutated via `this`.
-
 ## CSS
 
-This package intentionally keeps every class name, element ID, and
-data-attribute identical to the original module (see `src/constants.js`),
-so the `sass/` here is a near-direct port of the original module's
-`css/source`. It's entirely var-driven — every rule reads a `--vd-*` custom
+This package is entirely var-driven — every rule reads a `--vd-*` custom
 property (prefix is `$prefix` in `sass/base/_variables.scss`) rather than a
-literal value, so a consumer can re-theme the whole panel by overriding CSS
-custom properties without touching the Sass. `npm run build` compiles
-`sass/visual-debugger.scss` with Dart Sass into `dist/visual-debugger.css`
-/ `.min.css`.
+literal value, so a consumer can re-theme the **overlay** by overriding CSS
+custom properties on the host page, without touching the Sass. `npm run
+build` compiles `sass/visual-debugger.scss` with Dart Sass into
+`dist/visual-debugger.css` / `.min.css`.
+
+Customization doesn't affect the DOM elements inside the **controller panel**, as it renders behind a Shadow DOM boundary that resets inherited properties at `:host`, so a page-level `--vd-*` override reaches the overlay but not the panel. See "Shadow DOM" below for why, and for what re-theming the panel actually requires today.
 
 ### Icon font
 
@@ -182,7 +165,7 @@ content — `--vd-font-family--content`/`--vd-font-weight--content`), and
 Bold (700, e.g. the active tab). There's no true Regular/400 cut of this
 condensed style, so content is deliberately set to weight 500 rather than
 mislabeling the Medium face as 400. Italic cuts were also downloaded but
-aren't embedded — nothing in the panel renders italic text today.
+aren't embedded.
 
 `build.mjs`'s `buildOpenSansFontFaceCss()` converts each vendored TTF to
 WOFF2 (via the `wawoff2` devDependency — pure JS/WASM, no native build
@@ -226,12 +209,11 @@ can affect anything outside it. Concretely:
   are positioned over real page elements in the light DOM and don't need
   this. It still relies on the standalone `visual-debugger.min.css` /
   `.fonts.css` files being linked (see "Usage" above).
-- One consequence: overriding a `--vd-*` custom property from the host
-  page's own CSS (e.g. `:root { --vd-color--object-type--node: red; }`)
-  still reaches the overlay, but no longer reaches the panel — theming the
-  panel now requires either changing `sass/base/_variables.scss` and
-  rebuilding, or (not currently wired up) exposing a way to pass extra CSS
-  into the embedded stylesheet.
+- Overriding a `--vd-*` custom property from the host page's own CSS
+  (e.g. `:root { --vd-color--object-type--node: red; }`) reaches the
+  overlay, but not the panel — theming the panel now requires either
+  changing `sass/base/_variables.scss` and rebuilding, or (not currently
+  wired up) exposing a way to pass extra CSS into the embedded stylesheet.
 
 ## License
 
