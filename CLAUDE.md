@@ -68,19 +68,32 @@ solved this with a `.gitattributes` `export-ignore` file to shape a
 specifically because it *can't* solve the `dist/` problem: `export-ignore`
 only excludes tracked paths, it has no power to include untracked ones.
 Running the build inside CI sidesteps this entirely, since `dist/` exists
-as real files by the time the workflow zips it. If this idea resurfaces,
-that's the reason it didn't work the first time.
+as real files by the time either release asset gets packaged. If this idea
+resurfaces, that's the reason it didn't work the first time.
 
 The workflow: checkout → `npm ci` (works because `package-lock.json` is
-committed — see below) → `npm run build` → stage `dist/`, `package.json`,
-`README.md`, and `LICENSE` into a `drupal-visual-debugger/` folder → zip →
-`gh release create <tag> <zip> --generate-notes`, using the
-auto-provided `GITHUB_TOKEN` (needs `permissions: contents: write` at the
-workflow level, since default token permissions may otherwise be
-read-only). Deliberately not `actions/upload-release-asset` — that action
-(and its usual `actions/create-release` companion) is unmaintained; `gh`
-does release-creation and asset-upload in one call and needs nothing
-beyond what's already on GitHub-hosted runners.
+committed — see below) → `npm run build` → **two** packaging paths off
+that same build: (a) stage `dist/`, `package.json`, `README.md`, and
+`LICENSE` into a `drupal-visual-debugger/` folder and zip it, and (b)
+`npm pack`, which packages whatever `package.json`'s `"files"` field lists
+(`dist/` + `src/`, plus the always-included `package.json`/`README.md`/
+`LICENSE`) into a tarball with the `package/`-wrapped layout npm's
+installer expects — the Chrome extension installs this package via
+`npm install <tarball>`, and a hand-rolled `tar czf` of the raw directory
+*doesn't* have that wrapper, so it wasn't an option. Both assets attach to
+one release via `gh release create <tag> <zip> <tgz> --generate-notes`,
+using the auto-provided `GITHUB_TOKEN` (needs
+`permissions: contents: write` at the workflow level, since default token permissions may otherwise be read-only). Deliberately not
+`actions/upload-release-asset` — that action (and its usual
+`actions/create-release` companion) is unmaintained; `gh` does
+release-creation and asset-upload in one call and needs nothing beyond
+what's already on GitHub-hosted runners.
+
+The tarball's filename comes from `npm pack`'s own stdout (its per-file
+listing goes to stderr, so capturing stdout is exactly the filename, no
+parsing needed) rather than being assumed — `npm pack` names it from
+`package.json`'s own `name`/`version`, which only matches the git tag if
+`package.json` was bumped to the same version before tagging.
 
 Two things that will silently no-op if missed, both easy to trip over:
 - **The workflow file must already be on `main`** before a tag push
@@ -93,9 +106,11 @@ Two things that will silently no-op if missed, both easy to trip over:
   run without a lockfile that matches `package.json` exactly.
 
 Release asset URLs are predictable, not something to look up per release:
-`https://github.com/mabho/drupal-visual-debugger/releases/download/<tag>/drupal-visual-debugger-<tag>.zip`,
-or the GitHub API's `.../releases/latest` for "whatever's newest" without
-pinning a version.
+`https://github.com/mabho/drupal-visual-debugger/releases/download/<tag>/drupal-visual-debugger-<tag>.zip`
+for the zip (tag-named) and `.../drupal-visual-debugger-<package.json
+version>.tgz` for the tarball (npm-named — same value only if the two
+were kept in sync), or the GitHub API's `.../releases/latest` for
+"whatever's newest" without pinning a version.
 
 ## Architecture
 

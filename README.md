@@ -99,20 +99,25 @@ bundles above. See "Shadow DOM" below.
 Pushing a tag that matches this repo's existing version pattern — a plain
 `X.Y.Z`, e.g. `1.2.2` (no `v` prefix) — triggers
 [`.github/workflows/release.yml`](.github/workflows/release.yml), which
-builds the package and publishes it as a GitHub Release. This exists for
-the consuming Chrome extension project: it needs this package's
-*compiled* `dist/` output, and `dist/` is gitignored, so neither GitHub's
-"Download ZIP" button nor a plain `git archive` could ever include it —
-both only ever export tracked files. Running the build inside CI
-sidesteps that entirely, since `dist/` exists as real files by the time
-the workflow zips it.
+builds the package and publishes it as a GitHub Release with two assets.
+This exists for the consuming Chrome extension project: it needs this
+package's *compiled* `dist/` output, and `dist/` is gitignored, so neither
+GitHub's "Download ZIP" button nor a plain `git archive` could ever
+include it — both only ever export tracked files. Running the build
+inside CI sidesteps that entirely, since `dist/` exists as real files by
+the time either asset gets packaged.
 
 What the workflow does, in order: `npm ci` (works because
 `package-lock.json` is committed — don't re-add it to `.gitignore`) →
-`npm run build` → stage `dist/`, `package.json`, `README.md`, and
-`LICENSE` into a `drupal-visual-debugger/` folder and zip it → attach that
-zip to a new GitHub Release for the tag, via `gh release create
---generate-notes`.
+`npm run build` → **(a)** stage `dist/`, `package.json`, `README.md`, and
+`LICENSE` into a `drupal-visual-debugger/` folder and zip it, **(b)** run
+`npm pack` (packages whatever `package.json`'s `"files"` field lists —
+currently `dist/` + `src/`, plus the always-included `package.json`/
+`README.md`/`LICENSE` — into a tarball with the exact `package/`-wrapped
+layout npm's installer expects) → attach both to a new GitHub Release for
+the tag, via `gh release create --generate-notes`. The `.tgz` is what the
+Chrome extension actually installs via `npm install <tarball>`; the `.zip`
+stays for anyone who just wants a plain folder without going through npm.
 
 To cut a release:
 
@@ -132,11 +137,20 @@ git push origin 1.2.3
 ```
 
 Watch it with `gh run watch`, or check the repo's Actions tab. Once it
-finishes, `gh release view 1.2.3` shows the release and its asset's exact
-download URL, which always follows this pattern:
+finishes, `gh release view 1.2.3` shows the release and both assets'
+exact download URLs. The zip's name always follows the tag:
 
 ```
 https://github.com/mabho/drupal-visual-debugger/releases/download/<tag>/drupal-visual-debugger-<tag>.zip
+```
+
+The tarball's name instead comes from `npm pack`'s own convention —
+`<package.json name>-<package.json version>.tgz` — which only matches the
+tag if `package.json` was bumped to the same version before tagging (step
+2 above):
+
+```
+https://github.com/mabho/drupal-visual-debugger/releases/download/<tag>/drupal-visual-debugger-<package.json version>.tgz
 ```
 
 A consumer that wants "whatever's newest" without pinning a specific

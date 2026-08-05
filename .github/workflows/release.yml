@@ -1,14 +1,20 @@
 name: Release
 
-# Builds the package and attaches a ready-to-use zip (dist/ + package.json
-# + README + LICENSE) to a GitHub Release, for the consuming Chrome
-# extension project to download — sidesteps the fact that dist/ is
-# gitignored and therefore never part of a source archive (GitHub's
-# "Download ZIP" / `git archive` only ever export tracked files): CI
-# actually runs the build, so dist/ exists as real files by the time the
-# zip gets created. See README "Releasing a new version" / CLAUDE.md
-# "Releasing" for the full story, including why a .gitattributes-based
-# git-archive approach was tried first and abandoned.
+# Builds the package and attaches two assets to a GitHub Release: a plain
+# zip (dist/ + package.json + README + LICENSE) and an `npm pack` tarball
+# (dist/ + src/ + package.json + README + LICENSE, per package.json's
+# "files" field) — the latter specifically for the consuming Chrome
+# extension project, which installs this package via `npm install
+# <tarball>` and needs the exact `package/`-wrapped layout npm's installer
+# expects, which only `npm pack` produces correctly (a hand-rolled
+# `tar czf` of the raw directory lacks that wrapper and can extract into
+# the wrong place). Both sidestep the fact that dist/ is gitignored and
+# therefore never part of a source archive (GitHub's "Download ZIP" /
+# `git archive` only ever export tracked files): CI actually runs the
+# build, so dist/ exists as real files by the time either gets packaged.
+# See README "Releasing a new version" / CLAUDE.md "Releasing" for the
+# full story, including why a .gitattributes-based git-archive approach
+# was tried first and abandoned.
 #
 # Triggers on any plain semver-shaped tag (e.g. 1.2.3), matching this
 # repo's existing tag convention (1.1.0, 1.2.0, 1.2.1 — no "v" prefix).
@@ -47,7 +53,7 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Assemble release package
+      - name: Assemble release zip
         env:
           PACKAGE_NAME: drupal-visual-debugger
         run: |
@@ -58,12 +64,26 @@ jobs:
           cp package.json README.md LICENSE "$staging/"
           (cd staging && zip -r "../${PACKAGE_NAME}-${GITHUB_REF_NAME}.zip" "${PACKAGE_NAME}")
 
-      - name: Upload release asset
+      - name: Pack npm tarball
+        id: pack
+        run: |
+          set -euo pipefail
+          # `npm pack`'s own stdout is just the resulting filename (its
+          # per-file listing goes to stderr) — capture it rather than
+          # assuming a name, since it's built from package.json's own
+          # name/version, not from the git tag, and the two aren't
+          # guaranteed to match unless package.json was bumped to match
+          # the tag before tagging (see README "Releasing a new version").
+          tarball="$(npm pack)"
+          echo "filename=${tarball}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload release assets
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           gh release create "${GITHUB_REF_NAME}" \
             "drupal-visual-debugger-${GITHUB_REF_NAME}.zip" \
+            "${{ steps.pack.outputs.filename }}" \
             --title "${GITHUB_REF_NAME}" \
             --generate-notes
