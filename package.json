@@ -19,7 +19,9 @@
   "scripts": {
     "build": "node build.mjs",
     "watch": "node build.mjs --watch",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "version": "npm run build",
+    "postversion": "git push && git push --tags"
   },
   "keywords": [
     "drupal",
