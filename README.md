@@ -94,6 +94,68 @@ all hand-authored) that `controllerPanel.js` imports directly; it's not
 part of the published package on its own, only embedded into the JS
 bundles above. See "Shadow DOM" below.
 
+## Releasing a new version
+
+Pushing a tag that matches this repo's existing version pattern — a plain
+`X.Y.Z`, e.g. `1.2.2` (no `v` prefix) — triggers
+[`.github/workflows/release.yml`](.github/workflows/release.yml), which
+builds the package and publishes it as a GitHub Release. This exists for
+the consuming Chrome extension project: it needs this package's
+*compiled* `dist/` output, and `dist/` is gitignored, so neither GitHub's
+"Download ZIP" button nor a plain `git archive` could ever include it —
+both only ever export tracked files. Running the build inside CI
+sidesteps that entirely, since `dist/` exists as real files by the time
+the workflow zips it.
+
+What the workflow does, in order: `npm ci` (works because
+`package-lock.json` is committed — don't re-add it to `.gitignore`) →
+`npm run build` → stage `dist/`, `package.json`, `README.md`, and
+`LICENSE` into a `drupal-visual-debugger/` folder and zip it → attach that
+zip to a new GitHub Release for the tag, via `gh release create
+--generate-notes`.
+
+To cut a release:
+
+```bash
+# 1. The workflow file itself must already be merged into main — a tag
+#    push only triggers workflows GitHub already knows about from the
+#    default branch, not ones that only exist on the tagged commit.
+git checkout main && git pull origin main
+
+# 2. (Optional but recommended) bump "version" in package.json to match
+#    the tag you're about to create, then commit and push that to main.
+
+# 3. Tag and push. The push is what triggers the workflow — nothing else
+#    to run after this.
+git tag 1.2.3
+git push origin 1.2.3
+```
+
+Watch it with `gh run watch`, or check the repo's Actions tab. Once it
+finishes, `gh release view 1.2.3` shows the release and its asset's exact
+download URL, which always follows this pattern:
+
+```
+https://github.com/mabho/drupal-visual-debugger/releases/download/<tag>/drupal-visual-debugger-<tag>.zip
+```
+
+A consumer that wants "whatever's newest" without pinning a specific
+version can hit the GitHub API's `.../releases/latest` endpoint instead of
+guessing a tag:
+
+```
+https://api.github.com/repos/mabho/drupal-visual-debugger/releases/latest
+```
+
+To redo a release (e.g. the workflow failed partway through), delete the
+tag both locally and remotely before pushing it again — pushing the same
+tag a second time is a no-op otherwise:
+
+```bash
+git tag -d 1.2.3 && git push origin :refs/tags/1.2.3
+git tag 1.2.3 && git push origin 1.2.3
+```
+
 ## CSS
 
 This package is entirely var-driven — every rule reads a `--vd-*` custom

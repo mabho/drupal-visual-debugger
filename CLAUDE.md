@@ -50,6 +50,53 @@ imported directly by `controllerPanel.js` and bundled into the JS output
 `src/` or `sass/`, rerun the build (or `watch`) before checking behavior —
 nothing auto-serves `dist/`.
 
+## Releasing
+
+[`.github/workflows/release.yml`](.github/workflows/release.yml) builds
+and publishes a GitHub Release whenever a tag matching `*.*.*` is pushed
+(plain semver — `1.2.2`, not `v1.2.2` — matching every tag already in this
+repo; don't change this pattern without also deciding what to do about
+existing tags). See README "Releasing a new version" for the operator-facing
+how-to; this is the why/gotchas version.
+
+Why it exists: the consuming Chrome extension project needs this
+package's *compiled* `dist/` output, and `dist/` is gitignored — so
+neither GitHub's "Download ZIP" button nor a manual `git archive` can ever
+include it, since both only ever export tracked files. An earlier attempt
+solved this with a `.gitattributes` `export-ignore` file to shape a
+`git archive` export instead — that was abandoned and the file removed,
+specifically because it *can't* solve the `dist/` problem: `export-ignore`
+only excludes tracked paths, it has no power to include untracked ones.
+Running the build inside CI sidesteps this entirely, since `dist/` exists
+as real files by the time the workflow zips it. If this idea resurfaces,
+that's the reason it didn't work the first time.
+
+The workflow: checkout → `npm ci` (works because `package-lock.json` is
+committed — see below) → `npm run build` → stage `dist/`, `package.json`,
+`README.md`, and `LICENSE` into a `drupal-visual-debugger/` folder → zip →
+`gh release create <tag> <zip> --generate-notes`, using the
+auto-provided `GITHUB_TOKEN` (needs `permissions: contents: write` at the
+workflow level, since default token permissions may otherwise be
+read-only). Deliberately not `actions/upload-release-asset` — that action
+(and its usual `actions/create-release` companion) is unmaintained; `gh`
+does release-creation and asset-upload in one call and needs nothing
+beyond what's already on GitHub-hosted runners.
+
+Two things that will silently no-op if missed, both easy to trip over:
+- **The workflow file must already be on `main`** before a tag push
+  triggers it — GitHub Actions only evaluates tag-push triggers against
+  workflow definitions it already knows about from the default branch,
+  never ones that only exist on the tagged commit itself.
+- **`package-lock.json` must stay committed** (it was briefly gitignored
+  at one point in this project's history). If that regresses, `npm ci`
+  fails outright on a fresh checkout — unlike `npm install`, it refuses to
+  run without a lockfile that matches `package.json` exactly.
+
+Release asset URLs are predictable, not something to look up per release:
+`https://github.com/mabho/drupal-visual-debugger/releases/download/<tag>/drupal-visual-debugger-<tag>.zip`,
+or the GitHub API's `.../releases/latest` for "whatever's newest" without
+pinning a version.
+
 ## Architecture
 
 The core split is **parsing vs. rendering vs. everything-injectable**:
