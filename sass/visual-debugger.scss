@@ -396,7 +396,8 @@
       }
     }
 
-    .visual-debugger--deactivated & {
+    .visual-debugger--deactivated &,
+    &[data-vd-visible='false'] {
       opacity: 0;
       pointer-events: none;
     }
