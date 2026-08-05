@@ -2,10 +2,13 @@ name: Release
 
 # Builds the package and attaches a ready-to-use zip (dist/ + package.json
 # + README + LICENSE) to a GitHub Release, for the consuming Chrome
-# extension project to download — sidesteps the git-archive limitation
-# that dist/ is gitignored and therefore never part of a source archive
-# (see the .gitattributes note in this repo): CI actually runs the build,
-# so dist/ exists as real files by the time the zip gets created.
+# extension project to download — sidesteps the fact that dist/ is
+# gitignored and therefore never part of a source archive (GitHub's
+# "Download ZIP" / `git archive` only ever export tracked files): CI
+# actually runs the build, so dist/ exists as real files by the time the
+# zip gets created. See README "Releasing a new version" / CLAUDE.md
+# "Releasing" for the full story, including why a .gitattributes-based
+# git-archive approach was tried first and abandoned.
 #
 # Triggers on any plain semver-shaped tag (e.g. 1.2.3), matching this
 # repo's existing tag convention (1.1.0, 1.2.0, 1.2.1 — no "v" prefix).
