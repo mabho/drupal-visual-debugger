@@ -5,6 +5,23 @@ import { writeFileSync, readFileSync, cpSync, mkdirSync } from 'node:fs';
 
 const watch = process.argv.includes('--watch');
 
+// package.json is this project's single source of truth for the version
+// stamped into every dist/ output below — read once here rather than
+// hardcoding it anywhere else so the two can never drift apart.
+const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
+const repoUrl = pkg.repository?.url?.replace(/^git\+/, '').replace(/\.git$/, '');
+
+// `/*!`, not `/*` — the "preserve this comment" convention nearly every
+// CSS/JS minifier (esbuild's own included, though esbuild's `banner`
+// bypasses minification entirely anyway — see below) and downstream
+// bundler respects, so the banner survives even if the consuming project
+// runs this output through its own build step.
+const BANNER = `/*!
+ * ${pkg.name} v${pkg.version}
+ * ${repoUrl}
+ * License: ${pkg.license}
+ */`;
+
 const shared = {
   entryPoints: ['src/index.js'],
   bundle: true,
@@ -14,6 +31,11 @@ const shared = {
   // '../../generated/panelStyles.css'` and get its contents as a plain
   // string (esbuild's built-in text loader) — see buildPanelStyles() below.
   loader: { '.css': 'text' },
+  // Added to every JS output verbatim, *after* bundling/minification —
+  // esbuild's own sourcemap generation already accounts for the extra
+  // lines this inserts, so all four JS builds (including the minified
+  // one) stay correctly mapped with no extra work here.
+  banner: { js: BANNER },
 };
 
 const jsBuilds = [
@@ -142,24 +164,49 @@ async function buildPanelStyles() {
   );
 }
 
+/**
+ * Prepends `BANNER` to compiled CSS, keeping an accompanying sourcemap
+ * (if any) correctly aligned: every line the banner adds needs one
+ * matching empty ("no mapping here") entry prepended to the sourcemap's
+ * `mappings` string, in Source Map v3 that's one `;` per generated line —
+ * otherwise every mapped position would end up pointing however many
+ * lines the banner is too high once it pushes the real content down.
+ *
+ * @param {string} css Compiled CSS, banner-free.
+ * @param {object} [sourceMap] The sourcemap `sass.compile()` produced for
+ *   `css`, if any (the minified build doesn't request one).
+ * @returns {{ css: string, sourceMap: object|undefined }}
+ */
+function prependCssBanner(css, sourceMap) {
+  const bannerLineCount = BANNER.split('\n').length;
+  return {
+    css: `${BANNER}\n${css}`,
+    sourceMap: sourceMap && {
+      ...sourceMap,
+      mappings: ';'.repeat(bannerLineCount) + sourceMap.mappings,
+    },
+  };
+}
+
 function buildStyles() {
   // Compile Sass to plain CSS.
   const cssResult = sass.compile('sass/visual-debugger.scss', {
     style: 'expanded',
     sourceMap: true,
   });
+  const banneredCss = prependCssBanner(cssResult.css, cssResult.sourceMap);
 
-  writeFileSync('dist/visual-debugger.css', cssResult.css);
+  writeFileSync('dist/visual-debugger.css', banneredCss.css);
   writeFileSync(
     'dist/visual-debugger.css.map',
-    JSON.stringify(cssResult.sourceMap)
+    JSON.stringify(banneredCss.sourceMap)
   );
 
   // Minified CSS build for production libraries.yml.
   const cssMinResult = sass.compile('sass/visual-debugger.scss', {
     style: 'compressed',
   });
-  writeFileSync('dist/visual-debugger.min.css', cssMinResult.css);
+  writeFileSync('dist/visual-debugger.min.css', prependCssBanner(cssMinResult.css).css);
 
   // The icon font (fonts/visual-debugger-icons/) is a vendored IcoMoon
   // package. Its .scss uses legacy @import + unnamespaced variable
@@ -168,6 +215,9 @@ function buildStyles() {
   // re-emit the same handful of @font-face/content rules IcoMoon already
   // compiled. So instead of feeding its .scss into the Sass compile above,
   // we copy its precompiled style.css over as-is. See README "Icon font".
+  // Deliberately *not* banner-stamped — it's a verbatim third-party copy,
+  // not something this project compiled, and stamping it with our own
+  // version would misattribute it.
   cpSync('fonts/visual-debugger-icons/style.css', 'dist/visual-debugger.fonts.css');
 
   // Copy the icon font binaries alongside the compiled CSS — both
