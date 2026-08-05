@@ -119,26 +119,60 @@ the tag, via `gh release create --generate-notes`. The `.tgz` is what the
 Chrome extension actually installs via `npm install <tarball>`; the `.zip`
 stays for anyone who just wants a plain folder without going through npm.
 
-To cut a release:
+To cut a release, from a clean `main` (see step 1 below):
 
 ```bash
-# 1. The workflow file itself must already be merged into main — a tag
-#    push only triggers workflows GitHub already knows about from the
-#    default branch, not ones that only exist on the tagged commit.
-git checkout main && git pull origin main
-
-# 2. (Optional but recommended) bump "version" in package.json to match
-#    the tag you're about to create, then commit and push that to main.
-
-# 3. Tag and push. The push is what triggers the workflow — nothing else
-#    to run after this.
-git tag 1.2.3
-git push origin 1.2.3
+npm version patch   # or minor / major — see "Options" below
 ```
 
-Watch it with `gh run watch`, or check the repo's Actions tab. Once it
-finishes, `gh release view 1.2.3` shows the release and both assets'
-exact download URLs. The zip's name always follows the tag:
+That one command does everything needed to trigger a release:
+
+1. **The workflow file must already be merged into `main`** before this —
+   a tag push only triggers workflows GitHub already knows about from the
+   default branch, not ones that only exist on the tagged commit. Make
+   sure you're on an up-to-date `main` first: `git checkout main && git
+   pull origin main`.
+2. `npm version` bumps `"version"` in both `package.json` and
+   `package-lock.json` (keeping them in sync automatically — no manual
+   editing).
+3. It runs this repo's `version` script — `npm run build` — *after* the
+   bump, so the version banner stamped into `dist/` (see "CSS" and the JS
+   bundle headers) matches. If the build fails, `npm version` stops right
+   here: no commit, no tag, nothing pushed.
+4. It commits the version bump and tags that commit — with **no `v`
+   prefix** (configured in this repo's `.npmrc`, matching every tag
+   already here and the release workflow's trigger pattern).
+5. It runs this repo's `postversion` script — `git push && git push
+   --tags` — pushing both to `origin`. **That push is what actually
+   triggers the release workflow** — nothing else to run after this.
+
+`npm version` also refuses to run at all if your working directory has
+uncommitted changes (unless you pass `--force`) — so it can't accidentally
+sweep unrelated edits into the version-bump commit.
+
+**Options**, passed after `patch`/`minor`/`major` (or in place of them):
+
+- **`major` / `minor` / `patch`** — which part of `X.Y.Z` to increment.
+  An explicit version also works: `npm version 1.3.0`.
+- **`-m "message with %s"`** — custom commit message; `%s` is replaced
+  with the new version. Without this, the commit message is just the bare
+  version number (e.g. `1.2.4`).
+- **`--no-git-tag-version`** — bump `package.json`/`package-lock.json`
+  (and still run the `version` script) but skip creating the commit and
+  tag entirely. Mostly useful for testing the build step in isolation —
+  it doesn't combine cleanly with this repo's `postversion` push hook,
+  since there's nothing new to push afterward.
+- **`--force`** — bump even with a dirty working directory.
+- **`from-git`** — sets `package.json`'s version to match the latest git
+  tag, instead of incrementing anything. Useful if a tag was ever created
+  by some other means and `package.json` needs to catch up.
+
+Full reference: `npm help version`.
+
+Watch the triggered workflow with `gh run watch`, or check the repo's
+Actions tab. Once it finishes, `gh release view 1.2.3` shows the release
+and both assets' exact download URLs. The zip's name always follows the
+tag:
 
 ```
 https://github.com/mabho/drupal-visual-debugger/releases/download/<tag>/drupal-visual-debugger-<tag>.zip
@@ -161,14 +195,20 @@ guessing a tag:
 https://api.github.com/repos/mabho/drupal-visual-debugger/releases/latest
 ```
 
-To redo a release (e.g. the workflow failed partway through), delete the
-tag both locally and remotely before pushing it again — pushing the same
-tag a second time is a no-op otherwise:
+To redo a release where only the *workflow run* failed (the version bump
+and tag are fine, CI just broke) — delete the tag both locally and
+remotely before pushing it again, since pushing the same tag a second
+time is otherwise a no-op:
 
 ```bash
 git tag -d 1.2.3 && git push origin :refs/tags/1.2.3
 git tag 1.2.3 && git push origin 1.2.3
 ```
+
+To undo the version bump itself too (e.g. you ran the wrong bump type),
+also roll back the commit `npm version` created before re-running it —
+`git reset --hard HEAD~1` on `main` *before* it's been built on by anyone
+else, then delete the tag as above.
 
 ## CSS
 

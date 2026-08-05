@@ -112,6 +112,31 @@ version>.tgz` for the tarball (npm-named — same value only if the two
 were kept in sync), or the GitHub API's `.../releases/latest` for
 "whatever's newest" without pinning a version.
 
+**Cutting a release is `npm version patch` (or `minor`/`major`)** — not a
+custom script. See README "Releasing a new version" for the operator-facing
+walkthrough and the available flags; the pieces that make it work, for
+whoever touches this next:
+- **`.npmrc`**'s `tag-version-prefix=` is what makes `npm version`'s tags
+  match this repo's no-`v` convention (and the workflow's `*.*.*` trigger)
+  — npm's own default would otherwise produce `v1.2.4`. If tags in this
+  repo ever gain a `v` prefix on purpose, this line has to go too, or every
+  future `npm version` call would silently mismatch the release workflow's
+  trigger.
+- **`package.json`'s `"version"` script is `npm run build`** — deliberately
+  the *build*, not just a lint/test step: it both validates the release
+  (a broken build aborts `npm version` before any commit/tag exists,
+  since scripts run before the commit — see `npm help version`'s numbered
+  order) and regenerates `dist/` locally with the new version's banner.
+- **`package.json`'s `"postversion"` script is `git push && git push
+  --tags`** — this is what actually reaches `origin` and triggers the tag
+  push the release workflow listens for; without it `npm version` would
+  only ever act locally.
+- Verified this whole chain (bump → build → commit → tag → push) in an
+  isolated sandbox clone pointed at a fake local remote before trusting
+  it against this repo for real — worth the same care if it's ever
+  changed, since a mistake here either fails silently (no tag ever
+  reaches `origin`) or pushes something unintended.
+
 ## Architecture
 
 The core split is **parsing vs. rendering vs. everything-injectable**:
