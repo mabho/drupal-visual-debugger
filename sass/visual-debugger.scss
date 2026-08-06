@@ -248,6 +248,27 @@
       }
     }
 
+    // "No debug data" placeholder.
+    .empty-state {
+      padding: var(--#{variables.$prefix}empty-state--padding);
+
+      &__title {
+        font-size: var(--#{variables.$prefix}empty-state--title--font-size);
+      }
+
+      &__message {
+        color: var(--#{variables.$prefix}empty-state--message--color);
+        margin-top: var(--#{variables.$prefix}empty-state--message--margin-top);
+      }
+
+      &__hint {
+        color: var(--#{variables.$prefix}empty-state--hint--color);
+        font-size: var(--#{variables.$prefix}empty-state--hint--font-size);
+        font-style: var(--#{variables.$prefix}empty-state--hint--font-style);
+        margin-top: var(--#{variables.$prefix}empty-state--hint--margin-top);
+      }
+    }
+
     // List group.
     .list {
       background-color: var(--#{variables.$prefix}list-element--background-color);

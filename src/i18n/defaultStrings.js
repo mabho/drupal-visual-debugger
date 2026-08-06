@@ -21,4 +21,8 @@ export const defaultStrings = {
   tabList: 'List',
   tabFilters: 'Filters',
   allElements: 'All Elements',
+  noDebugDataTitle: 'No Drupal debug data found',
+  noDebugDataMessage: 'This page may not be a Drupal site, or Twig debugging is turned off.',
+  noDebugDataHint:
+    "To enable it, set twig.config.debug: true in your site's services.yml (commonly sites/development.services.yml), disable Twig cache, then rebuild the site's cache.",
 };

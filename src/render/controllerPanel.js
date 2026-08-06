@@ -454,6 +454,41 @@ export function createControllerPanel(options = {}) {
   }
 
   /**
+   * Builds the "no debug data" placeholder shown in place of the tab bar
+   * and its panels when `themeElements` came back empty. This happens
+   * whenever there's nothing for the parser to have found — most commonly
+   * the Chrome extension being activated on a non-Drupal page, or a Drupal
+   * page with Twig debugging turned off (unlike the Drupal module, which
+   * only ever renders the panel when the debug comments already exist,
+   * the extension's activation is a manual button click with no way to
+   * know in advance). Without this, the panel would open onto an empty
+   * Active Element panel plus three empty tabs, which reads as broken
+   * rather than "nothing to show" to someone who doesn't already know the
+   * debugger depends on Twig's theme-debug HTML comments.
+   *
+   * @returns {Element} The placeholder panel, not yet attached to the DOM.
+   */
+  function generateEmptyStateLayer() {
+    const layer = document.createElement('div');
+    layer.classList.add(CLASS_NAMES.emptyState);
+
+    const title = document.createElement('h3');
+    title.classList.add(CLASS_NAMES.emptyStateTitle);
+    title.textContent = strings.noDebugDataTitle;
+
+    const message = document.createElement('p');
+    message.classList.add(CLASS_NAMES.emptyStateMessage);
+    message.textContent = strings.noDebugDataMessage;
+
+    const hint = document.createElement('p');
+    hint.classList.add(CLASS_NAMES.emptyStateHint);
+    hint.textContent = strings.noDebugDataHint;
+
+    layer.append(title, message, hint);
+    return layer;
+  }
+
+  /**
    * Builds the "Selected Element" panel: basic info (object type +
    * property hook), theme suggestions, and template file path — each an
    * empty container populated later by `updateSelectedElement`.
@@ -500,10 +535,12 @@ export function createControllerPanel(options = {}) {
 
   /**
    * Builds the whole fly-out panel: the activation form (top checkbox),
-   * and the scrollable content area (Active Element, tab navigation,
-   * Selected/List/Filters panels) — then seals it behind a Shadow DOM
-   * boundary. Restores the activation state from `storage` and applies it
-   * immediately. Assigns `panelRoot` (the styled content, inside the
+   * and the scrollable content area — Active Element, tab navigation, and
+   * the Selected/List/Filters panels when `themeElements` is non-empty, or
+   * the `generateEmptyStateLayer` placeholder in its place when it's empty
+   * (see that function's doc comment for why) — then seals it behind a
+   * Shadow DOM boundary. Restores the activation state from `storage` and
+   * applies it immediately. Assigns `panelRoot` (the styled content, inside the
    * shadow root) and `panelHost` (the plain light-DOM element that owns
    * the shadow root) — required before any of the other functions in this
    * file that query `panelRoot` can run.
@@ -557,13 +594,17 @@ export function createControllerPanel(options = {}) {
     form.classList.add(CLASS_NAMES.form);
     form.appendChild(wrapper);
 
-    content.append(
-      generateActiveElementLayer(),
-      generateTabsNavigation(),
-      generateSelectedElementLayer(),
-      generateListTab(),
-      generateFiltersTab(),
-    );
+    if (themeElements.length > 0) {
+      content.append(
+        generateActiveElementLayer(),
+        generateTabsNavigation(),
+        generateSelectedElementLayer(),
+        generateListTab(),
+        generateFiltersTab(),
+      );
+    } else {
+      content.append(generateEmptyStateLayer());
+    }
     layer.append(form, content);
 
     const host = document.createElement('div');
@@ -777,6 +818,7 @@ export function createControllerPanel(options = {}) {
   function setSelectedElementSuggestions() {
     const themeElement = defaultThemeElement;
     const layer = panelRoot.querySelector(`#${IDS.controllerElementSuggestions}`);
+    if (!layer) return;
     layer.innerHTML = '';
 
     if (themeElement === null) {
@@ -805,6 +847,7 @@ export function createControllerPanel(options = {}) {
   function setSelectedElementTemplateFilePath() {
     const themeElement = defaultThemeElement;
     const target = panelRoot.querySelector(`#${IDS.controllerElementTemplateFilePath}`);
+    if (!target) return;
     target.innerHTML = '';
 
     if (themeElement === null || !themeElement.filePath) {
@@ -829,6 +872,7 @@ export function createControllerPanel(options = {}) {
    */
   function updateActiveElement() {
     const layer = panelRoot.querySelector(`#${IDS.controllerActiveElementInfo}`);
+    if (!layer) return;
     setElementInfo(activeThemeElement, layer, 'active');
   }
 
@@ -842,6 +886,7 @@ export function createControllerPanel(options = {}) {
    */
   function updateSelectedElement() {
     const layer = panelRoot.querySelector(`#${IDS.controllerElementInfo}`);
+    if (!layer) return;
     setElementInfo(defaultThemeElement, layer, 'selected');
     setSelectedElementSuggestions();
     setSelectedElementTemplateFilePath();

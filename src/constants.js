@@ -78,6 +78,14 @@ export const CLASS_NAMES = {
   iconSlideResize: 'icon-slide-resize',
   clickDragButton: 'click-drag-button',
 
+  // "No debug data" placeholder (shown instead of the tab bar/panels when
+  // `themeElements` comes back empty — see controllerPanel.js's
+  // generateEmptyStateLayer).
+  emptyState: 'empty-state',
+  emptyStateTitle: 'empty-state__title',
+  emptyStateMessage: 'empty-state__message',
+  emptyStateHint: 'empty-state__hint',
+
   // Tabbed navigation.
   tabsNavigation: 'tabbed-navigation',
   tabsNavigationTabs: 'tabbed-navigation__tabs',

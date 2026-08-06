@@ -298,6 +298,16 @@ $color--shadow: $color--gray;
   --#{$prefix}selected-element--info--column-gap: calc(var(--#{$prefix}controller--gutter) * .5);
   --#{$prefix}selected-element--info--flex-direction: row;
 
+  // "No debug data" placeholder.
+  --#{$prefix}empty-state--padding: var(--#{$prefix}controller--gutter);
+  --#{$prefix}empty-state--title--font-size: var(--#{$prefix}controller--font-size--title);
+  --#{$prefix}empty-state--message--color: var(--#{$prefix}color--gray-90);
+  --#{$prefix}empty-state--message--margin-top: calc(var(--#{$prefix}controller--gutter) * .5);
+  --#{$prefix}empty-state--hint--color: var(--#{$prefix}tag--empty--color);
+  --#{$prefix}empty-state--hint--font-size: calc(var(--#{$prefix}controller--font-size) * .9);
+  --#{$prefix}empty-state--hint--margin-top: calc(var(--#{$prefix}controller--gutter) * .5);
+  --#{$prefix}empty-state--hint--font-style: italic;
+
   // Content copy data.
   --#{$prefix}content-copy-data--align-items: center;
   --#{$prefix}content-copy-data--column-gap: calc(var(--#{$prefix}controller--gutter) * .25);
