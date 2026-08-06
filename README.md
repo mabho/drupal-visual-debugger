@@ -32,7 +32,7 @@ import { init, webStorageAdapter } from 'drupal-visual-debugger';
 init({
   root: document.body,
   storage: webStorageAdapter, // swap for a chrome.storage adapter in the context of a Chrome browser extension.
-  strings: { activateDebugger: 'Start debugging' }, // override any default string.
+  strings: { debuggerActivated: 'Start debugging' }, // override any default string.
   debug: false,
 });
 ```

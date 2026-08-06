@@ -6,7 +6,7 @@
  */
 export const defaultStrings = {
   copyToClipboard: 'Copy to clipboard',
-  activateDebugger: 'Activate debugger',
+  debuggerActivated: 'Debugger activated',
   selectedElement: 'Selected Element',
   basicInfo: 'Object Type',
   themeSuggestions: 'Theme Suggestions',

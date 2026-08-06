@@ -584,7 +584,7 @@ export function createControllerPanel(options = {}) {
 
     const label = document.createElement('label');
     label.setAttribute('for', activationCheckbox.id);
-    label.textContent = strings.activateDebugger;
+    label.textContent = strings.debuggerActivated;
 
     const wrapper = document.createElement('div');
     wrapper.classList.add(CLASS_NAMES.formWrapper);
