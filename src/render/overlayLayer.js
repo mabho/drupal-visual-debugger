@@ -46,7 +46,11 @@ export function createOverlayEngine({ themeElements }) {
     baseLayer.appendChild(instanceLayer);
   });
 
-  const { resizeObserver, mutationObserver } = observePositionChanges(themeElements);
+  const {
+    resizeObserver,
+    mutationObserver,
+    disconnect: disconnectPositionObservers,
+  } = observePositionChanges(themeElements);
 
   /**
    * Creates the overlay box painted on top of a single theme element's
@@ -245,20 +249,87 @@ export function createOverlayEngine({ themeElements }) {
 
   /**
    * Keeps overlay layers aligned with their reference elements as the page
-   * resizes, or as ancestor `style` attributes change (e.g. an admin
-   * toolbar toggling and shifting body padding).
+   * changes, via four independent triggers:
+   *
+   * - `ResizeObserver` on each element's own `dataNode` — catches the
+   *   tracked element itself changing size.
+   * - `MutationObserver` on `document.documentElement` (not just
+   *   `document.body`'s own `style` attribute, the original scope) with
+   *   `childList`/`subtree`/`attributes` all watched — catches layout
+   *   shifts caused by *anything else* on the page: a lazy-loaded image
+   *   finishing, an injected ad/cookie-consent banner, an accordion
+   *   revealing a sibling, a class toggle. None of that resizes the
+   *   tracked element itself or touches `document.body`'s `style`
+   *   attribute specifically, so the original narrower scope missed all
+   *   of it. Rooted at `documentElement` rather than `body` so it also
+   *   covers attribute changes made on `<html>` itself (e.g. a
+   *   viewport-offset custom property some themes use) — `document.body`
+   *   is already inside `documentElement`'s subtree, so this is a strict
+   *   superset of the previous scope. Mutations inside `baseLayer` itself
+   *   are filtered out (see `scheduleSync`'s caller below) — otherwise
+   *   this module's own position writes would retrigger the observer
+   *   forever.
+   * - `transitionend` on `document` (capture phase, so it sees transitions
+   *   on any element) — some themes animate a layout shift (e.g. a
+   *   toolbar's `padding-top` transitioning open/closed) rather than
+   *   jumping straight to the new value. The mutation above fires the
+   *   instant the new value is *written*, which — mid-transition — is a
+   *   stale read; this catches the moment the animation actually
+   *   finishes.
+   * - `window` `load` and `document.fonts.ready` (each once) — both land
+   *   after the very first `positionLayer` call in `buildInstanceLayer`,
+   *   which runs as soon as the page's Drupal behaviors attach
+   *   (`DOMContentLoaded`) — well before either fonts or images/iframes
+   *   without reserved dimensions have necessarily finished loading and
+   *   reflowing the page. One extra full resync once each has settled
+   *   catches whatever the initial pass measured too early.
+   *
+   * All four are coalesced through the same `requestAnimationFrame`-
+   * scheduled resync (`scheduleSync`) rather than repositioning
+   * synchronously per trigger, since the `MutationObserver` in particular
+   * can fire far more often than the narrower `style`-only version did.
    *
    * @param {import('../model/themeElement.js').ThemeElement[]} elements
    *   Theme elements to keep aligned; each must already have both
    *   `instanceLayer` and `dataNode` set.
-   * @returns {{ resizeObserver: ResizeObserver, mutationObserver: MutationObserver }}
-   *   Both observers, so the caller can `disconnect()` them on `destroy()`
-   *   — neither is tied to an element this module ever removes itself
-   *   (the `ResizeObserver` watches the real page's `dataNode`s, and the
-   *   `MutationObserver` watches `document.body`), so without this they'd
-   *   keep running, and keep this whole closure alive, forever.
+   * @returns {{
+   *   resizeObserver: ResizeObserver,
+   *   mutationObserver: MutationObserver,
+   *   disconnect: () => void,
+   * }} `resizeObserver`/`mutationObserver`, so the caller can `disconnect()`
+   *   them on `destroy()` as before, plus a `disconnect` function covering
+   *   the `transitionend`/`load` listeners and any pending scheduled
+   *   resync — none of these five are tied to an element this module ever
+   *   removes itself, so without tearing all of them down they'd keep
+   *   running (and keep this whole closure alive) forever.
    */
   function observePositionChanges(elements) {
+    let destroyed = false;
+    let pendingSyncFrame = null;
+
+    /**
+     * The actual resync, run at most once per animation frame regardless
+     * of how many triggers fired in between (see `scheduleSync`).
+     *
+     * @returns {void}
+     */
+    function syncAllPositions() {
+      pendingSyncFrame = null;
+      if (destroyed) return;
+      elements.forEach((el) => positionLayer(el.instanceLayer, el.dataNode));
+    }
+
+    /**
+     * Coalescing entry point for every trigger below — safe to call as
+     * often as they fire.
+     *
+     * @returns {void}
+     */
+    function scheduleSync() {
+      if (destroyed || pendingSyncFrame !== null) return;
+      pendingSyncFrame = requestAnimationFrame(syncAllPositions);
+    }
+
     const resizeObserver = new ResizeObserver((entries) => {
       entries.forEach((entry) => {
         const themeElement = elements.find((el) => el.dataNode === entry.target);
@@ -267,27 +338,47 @@ export function createOverlayEngine({ themeElements }) {
     });
     elements.forEach((el) => resizeObserver.observe(el.dataNode));
 
-    const mutationObserver = new MutationObserver(() => {
-      elements.forEach((el) => positionLayer(el.instanceLayer, el.dataNode));
+    const mutationObserver = new MutationObserver((mutations) => {
+      const relevant = mutations.some((mutation) => !baseLayer.contains(mutation.target));
+      if (relevant) scheduleSync();
     });
-    mutationObserver.observe(document.body, {
+    mutationObserver.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ['style'],
+      childList: true,
+      subtree: true,
     });
 
-    return { resizeObserver, mutationObserver };
+    document.addEventListener('transitionend', scheduleSync, true);
+    window.addEventListener('load', scheduleSync, { once: true });
+    document.fonts?.ready?.then(scheduleSync);
+
+    return {
+      resizeObserver,
+      mutationObserver,
+      disconnect() {
+        destroyed = true;
+        if (pendingSyncFrame !== null) {
+          cancelAnimationFrame(pendingSyncFrame);
+          pendingSyncFrame = null;
+        }
+        document.removeEventListener('transitionend', scheduleSync, true);
+        window.removeEventListener('load', scheduleSync);
+      },
+    };
   }
 
   /**
    * Tears down everything this engine created: disconnects both observers
-   * (without this, they'd keep running against the real page's elements
-   * forever, even after `baseLayer` is gone), removes `baseLayer` from the
-   * document (which takes every instance layer, and the mouseenter/
-   * mouseleave/click listeners attached directly to them, with it — those
-   * don't need separate removal since nothing outside this removed
-   * subtree references them), strips the `data-vd-id` attribute the
-   * parser left on each real page element, and clears the `instanceLayer`/
-   * `listRow` references each `themeElement` was carrying so a stale
+   * plus the `transitionend`/`load`/`document.fonts.ready` triggers and
+   * any still-pending scheduled resync (`disconnectPositionObservers` —
+   * without this, they'd keep running against the real page forever, even
+   * after `baseLayer` is gone), removes `baseLayer` from the document
+   * (which takes every instance layer, and the mouseenter/mouseleave/click
+   * listeners attached directly to them, with it — those don't need
+   * separate removal since nothing outside this removed subtree
+   * references them), strips the `data-vd-id` attribute the parser left
+   * on each real page element, and clears the `instanceLayer`/`listRow`
+   * references each `themeElement` was carrying so a stale
    * `themeElements` array a consumer might still be holding doesn't keep
    * detached DOM/closures alive.
    *
@@ -296,6 +387,7 @@ export function createOverlayEngine({ themeElements }) {
   function destroy() {
     resizeObserver.disconnect();
     mutationObserver.disconnect();
+    disconnectPositionObservers();
     baseLayer.remove();
 
     themeElements.forEach((themeElement) => {
