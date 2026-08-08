@@ -48,7 +48,52 @@ export function init(options = {}) {
     console.debug('[drupal-visual-debugger] parsed theme elements:', themeElements);
   }
 
-  const overlay = createOverlayEngine({ themeElements });
+  /**
+   * Reconciliation policy for dynamically-added/removed content (Drupal
+   * AJAX commands, BigPipe placeholder swaps, or any other DOM mutation):
+   * passed as `onDomChanged` to `createOverlayEngine` below, and called
+   * (debounced — see `overlayLayer.js`'s `scheduleContentNotify`) whenever
+   * a qualifying mutation suggests something changed. Safe to reference
+   * `overlay`/`panel` here despite this function declaration appearing
+   * textually before either is constructed — it's hoisted, and it's never
+   * actually *called* until well after `init()` has returned (the
+   * earliest possible trigger is an async `MutationObserver`/`setTimeout`
+   * callback), by which point both are long since assigned.
+   *
+   * Re-parses `root` for newly-appeared elements — `parseThemeDebugElements`
+   * is idempotent across repeat calls on the same root (see its own doc
+   * comment), so this naturally only ever returns elements that weren't
+   * already tracked — and separately snapshots `themeElements` (the exact
+   * array both `overlay` and `panel` share a reference to) for entries
+   * whose `dataNode` is no longer connected to the document, the common
+   * outcome of both a BigPipe placeholder swap and an ordinary AJAX
+   * replace/remove command, to evict. `.filter` takes a fresh snapshot
+   * rather than iterating `themeElements` live, since `overlay
+   * .removeThemeElement` splices out of that same array as it goes.
+   *
+   * Add order (overlay, then panel) mirrors `init()`'s own construction
+   * order just below. Remove order (panel, then overlay) is required in
+   * the other direction — panel's removal needs `listRow`/`instanceLayer`
+   * still intact to find and clean up the right row/active-state
+   * references; overlay's removal is what nulls them afterward.
+   *
+   * @returns {void}
+   */
+  function reconcileDynamicContent() {
+    parseThemeDebugElements(root).forEach((themeElement) => {
+      overlay.addThemeElement(themeElement);
+      panel.addThemeElement(themeElement);
+    });
+
+    themeElements
+      .filter((themeElement) => !themeElement.dataNode.isConnected)
+      .forEach((themeElement) => {
+        panel.removeThemeElement(themeElement);
+        overlay.removeThemeElement(themeElement);
+      });
+  }
+
+  const overlay = createOverlayEngine({ themeElements, onDomChanged: reconcileDynamicContent });
   const panel = createControllerPanel({ storage, strings, themeElements, overlay });
 
   overlay.attachControllerHooks(panel);

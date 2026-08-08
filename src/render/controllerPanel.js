@@ -66,6 +66,15 @@ export function createControllerPanel(options = {}) {
   // can disconnect it — it watches document.body, not anything this panel
   // owns/removes itself.
   let bodyOffsetObserver = null;
+  // Filters-tab group state, keyed by `objectType` — `{ item, filterSwitch,
+  // members }` per group. Lifted here (rather than staying local to
+  // `generateFiltersTab`, as it originally was) so `addThemeElement`/
+  // `removeThemeElement` can find, update, or create a group's row without
+  // rebuilding the whole tab — see those functions and `buildFilterGroupRow`.
+  // Populated once, by `generateFiltersTab` itself, at whichever point it
+  // gets called (construction time, or later if the panel started in the
+  // empty state and this is the first dynamically-added element).
+  let filterGroupsByType = new Map();
 
   /**
    * The theme element the "Selected Element" panel should currently show:
@@ -338,10 +347,13 @@ export function createControllerPanel(options = {}) {
     });
 
     // Lets the overlay engine (and Filters tab) sync this row's activation
-    // switch and visibility switch when either changes from elsewhere.
+    // switch and visibility switch when either changes from elsewhere, and
+    // lets `removeThemeElement` remove this exact row without needing a
+    // separate lookup table mapping theme elements to their DOM rows.
     themeElement.listRow = {
       setActivated: activation.setChecked,
       setVisible: applyVisible,
+      remove: () => item.remove(),
     };
 
     item.append(activation.wrapper, visibility.wrapper);
@@ -349,12 +361,93 @@ export function createControllerPanel(options = {}) {
   }
 
   /**
+   * A filter switch is a pure batch action: it always shows the state you
+   * last set it to, and setting it shows/hides every member element. It
+   * deliberately doesn't try to track whether members have since drifted
+   * out of sync via individual List-tab toggles.
+   *
+   * @param {{ wrapper: Element, input: Element, setChecked: (checked: boolean) => void }} filterSwitch
+   *   The on/off switch (from `createOnOffSwitch`) representing this type.
+   * @param {import('../model/themeElement.js').ThemeElement[]} members
+   *   Every theme element of this type.
+   * @param {boolean} visible New visibility state for the whole group.
+   * @returns {void}
+   */
+  function applyFilterVisible(filterSwitch, members, visible) {
+    filterSwitch.setChecked(visible);
+    filterSwitch.wrapper.setAttribute(LAYER_ATTRIBUTES.visible, String(visible));
+    members.forEach((themeElement) => overlay?.setThemeElementVisible(themeElement, visible));
+  }
+
+  /**
+   * Refreshes a Filters-tab group's label to reflect its current member
+   * count — call after `addThemeElement`/`removeThemeElement` mutate a
+   * group's `members` array in place.
+   *
+   * @param {string} type The `objectType` whose group label to refresh.
+   * @returns {void}
+   */
+  function updateFilterGroupLabel(type) {
+    const group = filterGroupsByType.get(type);
+    const label = group?.filterSwitch.wrapper.querySelector('label');
+    if (label) label.textContent = `${type} - (${group.members.length})`;
+  }
+
+  /**
+   * Builds one Filters-tab group row for `type`/`members`, appends it to
+   * `content`, and registers it in `filterGroupsByType` — used both by
+   * `generateFiltersTab` (once per distinct type found at construction, or
+   * whenever the panel transitions out of its empty state) and by
+   * `addThemeElement` when a brand-new `objectType` shows up later than
+   * that. `members` becomes the group's live, in-place-mutated membership
+   * list — `addThemeElement`/`removeThemeElement` push/splice this same
+   * array rather than replacing it, which is why the row itself never
+   * needs to be rebuilt for a simple membership change (see
+   * `updateFilterGroupLabel`).
+   *
+   * @param {Element} content The Filters tab's row container to append to.
+   * @param {string} type The `objectType` this group represents.
+   * @param {import('../model/themeElement.js').ThemeElement[]} members
+   *   Initial members of this group.
+   * @returns {void}
+   */
+  function buildFilterGroupRow(content, type, members) {
+    const item = document.createElement('div');
+    item.classList.add(CLASS_NAMES.filtersElementItem);
+
+    const filterSwitch = createOnOffSwitch({
+      label: `${type} - (${members.length})`,
+      checked: true,
+      wrapperClasses: [CLASS_NAMES.filtersElementItemActivation, CLASS_NAMES.objectType, CLASS_NAMES.objectTypeTyped(type)],
+      wrapperAttributes: { [LAYER_ATTRIBUTES.visible]: 'true' },
+      iconOn: CLASS_NAMES.iconToggleOn,
+      iconOff: CLASS_NAMES.iconToggleOff,
+      iconBullet: CLASS_NAMES.iconSquare,
+      labelFirst: false,
+    });
+
+    filterSwitch.wrapper.addEventListener('click', () => {
+      applyFilterVisible(filterSwitch, members, !filterSwitch.input.checked);
+    });
+    filterSwitch.wrapper.addEventListener('mouseenter', () => {
+      filterSwitch.wrapper.classList.add(CLASS_NAMES.filtersElementItemActivationHover);
+      members.forEach((themeElement) => overlay?.hoverThemeElement(themeElement));
+    });
+    filterSwitch.wrapper.addEventListener('mouseleave', () => {
+      filterSwitch.wrapper.classList.remove(CLASS_NAMES.filtersElementItemActivationHover);
+      members.forEach((themeElement) => overlay?.unhoverThemeElement(themeElement));
+    });
+
+    item.appendChild(filterSwitch.wrapper);
+    content.appendChild(item);
+    filterGroupsByType.set(type, { item, filterSwitch, members });
+  }
+
+  /**
    * Builds the "Filters" tab: one batch-visibility switch per distinct
    * `objectType` found on the page (labeled with the type and its element
-   * count), plus an "All Elements" switch that sets every type at once.
-   * Each switch is a pure batch action (see `applyFilterVisible`) rather
-   * than a tri-state reflecting each member's actual current visibility —
-   * it always just shows the state it was last set to.
+   * count, via `buildFilterGroupRow`), plus an "All Elements" switch that
+   * sets every type at once.
    *
    * @returns {Element} The Filters tab panel, not yet attached to the DOM.
    */
@@ -375,59 +468,7 @@ export function createControllerPanel(options = {}) {
       if (!groups.has(themeElement.objectType)) groups.set(themeElement.objectType, []);
       groups.get(themeElement.objectType).push(themeElement);
     });
-
-    /**
-     * A filter switch is a pure batch action: it always shows the state
-     * you last set it to, and setting it shows/hides every member element.
-     * It deliberately doesn't try to track whether members have since
-     * drifted out of sync via individual List-tab toggles.
-     *
-     * @param {{ wrapper: Element, input: Element, setChecked: (checked: boolean) => void }} filterSwitch
-     *   The on/off switch (from `createOnOffSwitch`) representing this type.
-     * @param {import('../model/themeElement.js').ThemeElement[]} members
-     *   Every theme element of this type.
-     * @param {boolean} visible New visibility state for the whole group.
-     * @returns {void}
-     */
-    function applyFilterVisible(filterSwitch, members, visible) {
-      filterSwitch.setChecked(visible);
-      filterSwitch.wrapper.setAttribute(LAYER_ATTRIBUTES.visible, String(visible));
-      members.forEach((themeElement) => overlay?.setThemeElementVisible(themeElement, visible));
-    }
-
-    const filterGroups = [];
-
-    groups.forEach((members, type) => {
-      const item = document.createElement('div');
-      item.classList.add(CLASS_NAMES.filtersElementItem);
-
-      const filterSwitch = createOnOffSwitch({
-        label: `${type} - (${members.length})`,
-        checked: true,
-        wrapperClasses: [CLASS_NAMES.filtersElementItemActivation, CLASS_NAMES.objectType, CLASS_NAMES.objectTypeTyped(type)],
-        wrapperAttributes: { [LAYER_ATTRIBUTES.visible]: 'true' },
-        iconOn: CLASS_NAMES.iconToggleOn,
-        iconOff: CLASS_NAMES.iconToggleOff,
-        iconBullet: CLASS_NAMES.iconSquare,
-        labelFirst: false,
-      });
-
-      filterSwitch.wrapper.addEventListener('click', () => {
-        applyFilterVisible(filterSwitch, members, !filterSwitch.input.checked);
-      });
-      filterSwitch.wrapper.addEventListener('mouseenter', () => {
-        filterSwitch.wrapper.classList.add(CLASS_NAMES.filtersElementItemActivationHover);
-        members.forEach((themeElement) => overlay?.hoverThemeElement(themeElement));
-      });
-      filterSwitch.wrapper.addEventListener('mouseleave', () => {
-        filterSwitch.wrapper.classList.remove(CLASS_NAMES.filtersElementItemActivationHover);
-        members.forEach((themeElement) => overlay?.unhoverThemeElement(themeElement));
-      });
-
-      filterGroups.push({ filterSwitch, members });
-      item.appendChild(filterSwitch.wrapper);
-      content.appendChild(item);
-    });
+    groups.forEach((members, type) => buildFilterGroupRow(content, type, members));
 
     const allItem = document.createElement('div');
     allItem.classList.add(CLASS_NAMES.filtersElementItemSelectAll);
@@ -443,7 +484,7 @@ export function createControllerPanel(options = {}) {
     allSwitch.wrapper.addEventListener('click', () => {
       const next = !allSwitch.input.checked;
       allSwitch.setChecked(next);
-      filterGroups.forEach(({ filterSwitch, members }) => applyFilterVisible(filterSwitch, members, next));
+      filterGroupsByType.forEach(({ filterSwitch, members }) => applyFilterVisible(filterSwitch, members, next));
     });
 
     allItem.appendChild(allSwitch.wrapper);
@@ -965,6 +1006,108 @@ export function createControllerPanel(options = {}) {
     updateSelectedElement();
   }
 
+  // ---- Dynamic content (AJAX/BigPipe) ---------------------------------------
+
+  /**
+   * Incorporates a theme element discovered after construction into the
+   * already-running panel (see `index.js`'s `reconcileDynamicContent`).
+   * `themeElement` must already be present in the shared `themeElements`
+   * array — this function reads it, it doesn't push it (ownership of that
+   * push belongs to `overlayLayer.js`'s own `addThemeElement`, which must
+   * run first; see that function's doc comment for why).
+   *
+   * If the panel is currently showing the empty-state placeholder (this is
+   * the very first theme element ever seen on this page), tears that down
+   * and builds the normal tab UI fresh instead — since `themeElements`
+   * already includes `themeElement` by this point, the freshly-built
+   * List/Filters tabs already account for it, so there's nothing further
+   * to do on that path. Deliberately does not re-run
+   * `generateSliderButton`/`calculateInitialControllerWidth`/
+   * `checkControllerActivation` — those already ran once in the original
+   * `executePostActivation` regardless of empty state; rerunning them
+   * would create a second slider button and duplicate `document`-level
+   * `mousemove`/`mouseup` listeners.
+   *
+   * Otherwise (the panel already has a full tab UI), appends one List row
+   * and either updates the matching Filters group's membership/label or
+   * creates a brand-new group if `themeElement.objectType` hasn't been
+   * seen before.
+   *
+   * @param {import('../model/themeElement.js').ThemeElement} themeElement
+   *   The newly-discovered theme element (already in `themeElements`).
+   * @returns {void}
+   */
+  function addThemeElement(themeElement) {
+    const emptyStateEl = panelRoot.querySelector(`.${CLASS_NAMES.emptyState}`);
+    if (emptyStateEl) {
+      const content = panelRoot.querySelector(`.${CLASS_NAMES.content}`);
+      emptyStateEl.remove();
+      content.append(
+        generateActiveElementLayer(),
+        generateTabsNavigation(),
+        generateSelectedElementLayer(),
+        generateListTab(),
+        generateFiltersTab(),
+      );
+      updateActiveElement();
+      updateSelectedElement();
+      switchToTab(IDS.controllerElementSelected);
+      return;
+    }
+
+    const listContent = panelRoot.querySelector(`#${IDS.controllerElementList} .${CLASS_NAMES.listElementContent}`);
+    listContent?.appendChild(generateListItem(themeElement));
+
+    const group = filterGroupsByType.get(themeElement.objectType);
+    if (group) {
+      group.members.push(themeElement);
+      updateFilterGroupLabel(themeElement.objectType);
+    } else {
+      const filtersContent = panelRoot.querySelector(`#${IDS.controllerElementFilters} .${CLASS_NAMES.filtersElementContent}`);
+      if (filtersContent) buildFilterGroupRow(filtersContent, themeElement.objectType, [themeElement]);
+    }
+  }
+
+  /**
+   * Reverses `addThemeElement`'s incremental path — call BEFORE
+   * `overlayLayer.js`'s own `removeThemeElement` for the same
+   * `themeElement`, while `themeElement.listRow`/`instanceLayer` are still
+   * intact (overlay's removal is what nulls them). Resets the Active/
+   * Selected panels first if either was pointing at `themeElement` — since
+   * overlay's `removeThemeElement` also deselects via `setChecked`, but
+   * hover (`activeThemeElement`) has no overlay-side equivalent to check,
+   * this identity check is this panel's own responsibility regardless.
+   * Removes the element's List row, and either updates or removes its
+   * Filters group (removed entirely once the group's last member is gone).
+   *
+   * Reverting to the empty-state placeholder if this removes the very
+   * last theme element is a plausible nice-to-have, deliberately not
+   * implemented here — a low-likelihood scenario not worth the asymmetric
+   * teardown complexity.
+   *
+   * @param {import('../model/themeElement.js').ThemeElement} themeElement
+   *   The theme element to stop tracking.
+   * @returns {void}
+   */
+  function removeThemeElement(themeElement) {
+    if (activeThemeElement === themeElement) resetActiveThemeElement();
+    if (defaultThemeElement === themeElement) resetDefaultThemeElement();
+
+    themeElement.listRow?.remove();
+
+    const group = filterGroupsByType.get(themeElement.objectType);
+    if (group) {
+      const index = group.members.indexOf(themeElement);
+      if (index !== -1) group.members.splice(index, 1);
+      if (group.members.length === 0) {
+        group.item.remove();
+        filterGroupsByType.delete(themeElement.objectType);
+      } else {
+        updateFilterGroupLabel(themeElement.objectType);
+      }
+    }
+  }
+
   /**
    * One-time setup that must run after the panel's DOM exists and has been
    * attached to the document (so `getBoundingClientRect`/computed styles
@@ -1034,6 +1177,8 @@ export function createControllerPanel(options = {}) {
     setDefaultThemeElement,
     resetDefaultThemeElement,
     getSelectedThemeElement,
+    addThemeElement,
+    removeThemeElement,
     destroy,
   };
 }

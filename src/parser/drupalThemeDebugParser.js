@@ -52,13 +52,23 @@ const RE_TEMPLATE_END_OUTPUT = /END(?: CUSTOM TEMPLATE)? OUTPUT from '([^']*)'/;
  * to a real DOM element) or discarded, and scanning resets for the next
  * block.
  *
+ * Safe to call more than once against the same (or an overlapping) `root`
+ * — any element already matched by a previous call (tracked via the
+ * `LAYER_ATTRIBUTES.layerId` attribute stamped onto it below) is skipped
+ * rather than re-matched, so a repeat call only ever returns elements that
+ * weren't already tracked. This is what makes whole-root rescanning (as
+ * opposed to trying to scope a scan to just what changed) a viable
+ * strategy for picking up dynamically-added content — see `index.js`'s
+ * `reconcileDynamicContent`.
+ *
  * @param {Element} [root] Root element to scan for theme debug comments.
  *   Defaults to `document.body`. Comments outside of `root` (e.g. in
  *   `<head>`) are not seen.
  * @returns {import('../model/themeElement.js').ThemeElement[]} One entry
- *   per matched "THEME DEBUG ... BEGIN OUTPUT" block, in document order.
- *   Blocks that never resolved to a real DOM element (no matching
- *   `BEGIN OUTPUT`, or no element immediately following it) are omitted.
+ *   per newly-matched "THEME DEBUG ... BEGIN OUTPUT" block, in document
+ *   order. Blocks that never resolved to a real DOM element (no matching
+ *   `BEGIN OUTPUT`, no element immediately following it, or an element
+ *   already matched by a previous call) are omitted.
  */
 export function parseThemeDebugElements(root = document.body) {
   const themeElements = [];
@@ -109,7 +119,14 @@ export function parseThemeDebugElements(root = document.body) {
       current.filePath = filePathMatch[1];
 
       const dataNode = child.nextElementSibling;
-      const alreadyMatched = current.dataNode !== null;
+      // Guards against re-matching an element a previous call to this
+      // function already claimed — without it, calling this function
+      // again on a `root` that still contains earlier matches (as
+      // dynamic-content reconciliation does, rescanning the whole root
+      // rather than trying to scope to just what changed) would re-stamp
+      // a new random `id` and push a duplicate ThemeElement for the same
+      // DOM node every time.
+      const alreadyMatched = dataNode?.hasAttribute(LAYER_ATTRIBUTES.layerId);
 
       if (dataNode && dataNode.nodeType === Node.ELEMENT_NODE && !alreadyMatched) {
         current.dataNode = dataNode;

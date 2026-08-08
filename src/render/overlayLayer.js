@@ -17,6 +17,16 @@ import { CLASS_NAMES, LAYER_ATTRIBUTES } from '../constants.js';
  *   The returned engine holds onto this exact array/its elements — mutating
  *   a `themeElement` after this call (e.g. setting `.listRow`) is how the
  *   controller panel wires itself in, not an anti-pattern to avoid here.
+ *   `addThemeElement`/`removeThemeElement` (see the returned shape) push/
+ *   splice this same array, so anything else holding a reference to it
+ *   (e.g. `index.js`, `getUniquePropertyHooks`) sees dynamic changes too.
+ * @param {() => void} [options.onDomChanged] Called (debounced, no payload)
+ *   whenever a DOM mutation suggests content may have appeared or
+ *   disappeared somewhere in the document — see `observePositionChanges`'s
+ *   `scheduleContentNotify`. This module stays parser-agnostic on purpose
+ *   (see the file-level doc comment): it never decides *what* changed,
+ *   only that something did; `index.js` is the one that reacts by
+ *   re-parsing and calling `addThemeElement`/`removeThemeElement`.
  * @returns {{
  *   baseLayer: Element,
  *   attachControllerHooks: (hooks: ControllerHooks) => void,
@@ -25,15 +35,20 @@ import { CLASS_NAMES, LAYER_ATTRIBUTES } from '../constants.js';
  *   setThemeElementVisible: (themeElement: import('../model/themeElement.js').ThemeElement, visible: boolean) => void,
  *   hoverThemeElement: (themeElement: import('../model/themeElement.js').ThemeElement) => void,
  *   unhoverThemeElement: (themeElement: import('../model/themeElement.js').ThemeElement) => void,
+ *   addThemeElement: (themeElement: import('../model/themeElement.js').ThemeElement) => void,
+ *   removeThemeElement: (themeElement: import('../model/themeElement.js').ThemeElement) => void,
  *   destroy: () => void,
  * }} `baseLayer` is the container element holding every instance layer —
  *   append it to the document once. The rest of the shape is the API
  *   surface the controller panel's List/Filters tabs drive directly (see
  *   each named function below for details); `attachControllerHooks` wires
- *   up the reverse direction (overlay → panel notifications); `destroy`
- *   tears all of this back down (see its own doc comment).
+ *   up the reverse direction (overlay → panel notifications);
+ *   `addThemeElement`/`removeThemeElement` incorporate/evict a theme
+ *   element discovered/lost after this initial construction (see each for
+ *   details); `destroy` tears all of this back down (see its own doc
+ *   comment).
  */
-export function createOverlayEngine({ themeElements }) {
+export function createOverlayEngine({ themeElements, onDomChanged }) {
   const baseLayer = document.createElement('div');
   baseLayer.classList.add(CLASS_NAMES.visualDebugger, CLASS_NAMES.baseLayer);
 
@@ -50,7 +65,7 @@ export function createOverlayEngine({ themeElements }) {
     resizeObserver,
     mutationObserver,
     disconnect: disconnectPositionObservers,
-  } = observePositionChanges(themeElements);
+  } = observePositionChanges(themeElements, onDomChanged);
 
   /**
    * Creates the overlay box painted on top of a single theme element's
@@ -214,6 +229,67 @@ export function createOverlayEngine({ themeElements }) {
   }
 
   /**
+   * Incorporates a newly-discovered theme element into this already-
+   * running engine: builds and appends its overlay exactly like the
+   * construction-time elements got, starts tracking its size via
+   * `resizeObserver`, and pushes it into the shared `themeElements` array
+   * — the one place ownership of that push lives; `controllerPanel.js`'s
+   * own `addThemeElement` takes the object as a given and must not also
+   * push it, or the array (and anything that reads it, e.g.
+   * `getUniquePropertyHooks`) ends up with duplicates. No-op if
+   * `themeElement` was already added, in case dynamic-content
+   * reconciliation (see `index.js`'s `reconcileDynamicContent`) ever
+   * double-fires for the same object.
+   *
+   * @param {import('../model/themeElement.js').ThemeElement} themeElement
+   *   A freshly-parsed theme element, not yet carrying an `instanceLayer`.
+   * @returns {void}
+   */
+  function addThemeElement(themeElement) {
+    if (themeElement.instanceLayer) return;
+    const instanceLayer = buildInstanceLayer(themeElement);
+    themeElement.instanceLayer = instanceLayer;
+    baseLayer.appendChild(instanceLayer);
+    themeElements.push(themeElement);
+    resizeObserver.observe(themeElement.dataNode);
+  }
+
+  /**
+   * Reverses `addThemeElement` — also used for elements that were present
+   * at construction time, e.g. once their `dataNode` is detected as
+   * detached from the document (see `reconcileDynamicContent`). Deselects
+   * the element first if it was the checked/selected one (cascades into
+   * the usual `resetDefaultThemeElement` notification via `setChecked`,
+   * no extra plumbing needed), stops tracking its size, removes its
+   * overlay from the document, strips the `data-vd-id` the parser stamped
+   * — so a library that detaches-and-later-reinserts the same node (e.g.
+   * a cached/reused dialog) is picked up fresh on a later rescan rather
+   * than being permanently skipped by the parser's own cross-call dedup
+   * guard — and drops it from the shared `themeElements` array. No-op if
+   * `themeElement` was already removed.
+   *
+   * Callers (see `index.js`'s `reconcileDynamicContent`) must call
+   * `controllerPanel`'s equivalent `removeThemeElement` FIRST, while
+   * `themeElement.listRow`/`instanceLayer` are still intact — this
+   * function nulls both.
+   *
+   * @param {import('../model/themeElement.js').ThemeElement} themeElement
+   *   The theme element to stop tracking.
+   * @returns {void}
+   */
+  function removeThemeElement(themeElement) {
+    if (!themeElement.instanceLayer) return;
+    if (isChecked(themeElement)) setChecked(themeElement, false);
+    resizeObserver.unobserve(themeElement.dataNode);
+    themeElement.instanceLayer.remove();
+    themeElement.dataNode?.removeAttribute(LAYER_ATTRIBUTES.layerId);
+    const index = themeElements.indexOf(themeElement);
+    if (index !== -1) themeElements.splice(index, 1);
+    themeElement.instanceLayer = null;
+    themeElement.listRow = null;
+  }
+
+  /**
    * Sizes and positions an overlay layer to match a reference element's
    * current bounding box, accounting for page scroll.
    *
@@ -284,14 +360,24 @@ export function createOverlayEngine({ themeElements }) {
    *   reflowing the page. One extra full resync once each has settled
    *   catches whatever the initial pass measured too early.
    *
-   * All four are coalesced through the same `requestAnimationFrame`-
-   * scheduled resync (`scheduleSync`) rather than repositioning
-   * synchronously per trigger, since the `MutationObserver` in particular
-   * can fire far more often than the narrower `style`-only version did.
+   * Position sync (`scheduleSync`, rAF-coalesced) and content-change
+   * notification (`scheduleContentNotify`, debounced — see its own doc
+   * comment for why it deliberately runs on a different, much slower
+   * cadence) are two independently-triggered signals sharing the same
+   * `MutationObserver`, not one shared tick — repositioning wants ≤1-frame
+   * latency (visible jank otherwise), while "new content probably
+   * finished arriving" does not, and reusing the per-frame cadence for
+   * both would drive a full comment-tree rescan up to 60x/sec, forever,
+   * on any page with even one continuously-mutating widget (a carousel, a
+   * live-chat badge).
    *
    * @param {import('../model/themeElement.js').ThemeElement[]} elements
    *   Theme elements to keep aligned; each must already have both
    *   `instanceLayer` and `dataNode` set.
+   * @param {() => void} [onDomChanged] Forwarded from `createOverlayEngine`
+   *   — called (debounced) whenever a qualifying mutation suggests content
+   *   may have appeared/disappeared. Omitted entirely if not provided (no
+   *   timer ever gets scheduled).
    * @returns {{
    *   resizeObserver: ResizeObserver,
    *   mutationObserver: MutationObserver,
@@ -299,13 +385,14 @@ export function createOverlayEngine({ themeElements }) {
    * }} `resizeObserver`/`mutationObserver`, so the caller can `disconnect()`
    *   them on `destroy()` as before, plus a `disconnect` function covering
    *   the `transitionend`/`load` listeners and any pending scheduled
-   *   resync — none of these five are tied to an element this module ever
-   *   removes itself, so without tearing all of them down they'd keep
+   *   resync/notify — none of these are tied to an element this module
+   *   ever removes itself, so without tearing all of them down they'd keep
    *   running (and keep this whole closure alive) forever.
    */
-  function observePositionChanges(elements) {
+  function observePositionChanges(elements, onDomChanged) {
     let destroyed = false;
     let pendingSyncFrame = null;
+    let pendingContentNotifyTimer = null;
 
     /**
      * The actual resync, run at most once per animation frame regardless
@@ -320,14 +407,33 @@ export function createOverlayEngine({ themeElements }) {
     }
 
     /**
-     * Coalescing entry point for every trigger below — safe to call as
-     * often as they fire.
+     * Coalescing entry point for every position-affecting trigger below —
+     * safe to call as often as they fire.
      *
      * @returns {void}
      */
     function scheduleSync() {
       if (destroyed || pendingSyncFrame !== null) return;
       pendingSyncFrame = requestAnimationFrame(syncAllPositions);
+    }
+
+    /**
+     * Debounced (trailing, ~200ms) notification that new content may have
+     * appeared or been removed somewhere in the document. Resets on every
+     * qualifying mutation rather than firing on a fixed interval, so
+     * `onDomChanged` only runs once a burst of content changes has
+     * actually settled (e.g. a whole AJAX response's worth of DOM
+     * insertions landing across several mutation records).
+     *
+     * @returns {void}
+     */
+    function scheduleContentNotify() {
+      if (destroyed || !onDomChanged) return;
+      if (pendingContentNotifyTimer !== null) clearTimeout(pendingContentNotifyTimer);
+      pendingContentNotifyTimer = setTimeout(() => {
+        pendingContentNotifyTimer = null;
+        if (!destroyed) onDomChanged();
+      }, 200);
     }
 
     const resizeObserver = new ResizeObserver((entries) => {
@@ -338,9 +444,27 @@ export function createOverlayEngine({ themeElements }) {
     });
     elements.forEach((el) => resizeObserver.observe(el.dataNode));
 
+    // A single mutation batch can be relevant to position, to content
+    // discovery, both, or neither — checked once per mutation record
+    // rather than with two separate `.some()` passes over the same array.
     const mutationObserver = new MutationObserver((mutations) => {
-      const relevant = mutations.some((mutation) => !baseLayer.contains(mutation.target));
-      if (relevant) scheduleSync();
+      let relevantForPosition = false;
+      let relevantForContent = false;
+
+      mutations.forEach((mutation) => {
+        if (baseLayer.contains(mutation.target)) return;
+        relevantForPosition = true;
+        // Attribute-only mutations (including the parser's own
+        // `data-vd-id` stamp on a just-matched node) can never introduce
+        // or remove a comment/element pairing, so they're excluded here —
+        // only a childList change with actual added/removed nodes counts.
+        if (mutation.type === 'childList' && (mutation.addedNodes.length > 0 || mutation.removedNodes.length > 0)) {
+          relevantForContent = true;
+        }
+      });
+
+      if (relevantForPosition) scheduleSync();
+      if (relevantForContent) scheduleContentNotify();
     });
     mutationObserver.observe(document.documentElement, {
       attributes: true,
@@ -360,6 +484,10 @@ export function createOverlayEngine({ themeElements }) {
         if (pendingSyncFrame !== null) {
           cancelAnimationFrame(pendingSyncFrame);
           pendingSyncFrame = null;
+        }
+        if (pendingContentNotifyTimer !== null) {
+          clearTimeout(pendingContentNotifyTimer);
+          pendingContentNotifyTimer = null;
         }
         document.removeEventListener('transitionend', scheduleSync, true);
         window.removeEventListener('load', scheduleSync);
@@ -416,6 +544,8 @@ export function createOverlayEngine({ themeElements }) {
     setThemeElementVisible: setVisible,
     hoverThemeElement,
     unhoverThemeElement,
+    addThemeElement,
+    removeThemeElement,
     destroy,
   };
 }
