@@ -1,6 +1,6 @@
 {
   "name": "drupal-visual-debugger",
-  "version": "1.2.5",
+  "version": "1.2.6",
   "description": "Framework-agnostic engine that renders on-screen overlays and an inspector panel from Drupal's Twig theme debug output. Consumed by the visual_debugger Drupal module and by the Drupal Visual Debugger Chrome extension.",
   "type": "module",
   "main": "dist/visual-debugger.cjs.js",
