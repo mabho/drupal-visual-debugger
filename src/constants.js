@@ -140,6 +140,21 @@ export const LAYER_ATTRIBUTES = {
   controllerActivated: 'data-controller-activated',
   visible: 'data-vd-visible',
   listItemActivated: 'data-vd-list-item-activated',
+  // Stamped on a tracked element's own `dataNode` once classified — see
+  // overlayLayer.js's `classifyPositionStrategy`. Value `'fixed'` means
+  // this element is itself `position: fixed`, or a descendant of a clean,
+  // viewport-anchored `position: fixed` ancestor; absent means the
+  // ordinary absolute+scroll-offset positioning applies. The only thing
+  // `positionLayer` reads on its hot path — a single attribute check, no
+  // ancestor walk.
+  positionStrategy: 'data-vd-position-strategy',
+  // Internal short-circuit marker stamped on whichever ancestor element
+  // (not necessarily a tracked theme element itself) was confirmed to be
+  // a clean, viewport-anchored `position: fixed` containing block — lets
+  // later classification walks for *other* tracked elements sharing that
+  // same ancestor stop immediately instead of re-deriving it. Revalidated
+  // (not blindly trusted) on each use — see `classifyPositionStrategy`.
+  fixedContainingBlock: 'data-vd-fixed-root',
 };
 
 export const STORAGE_KEYS = {

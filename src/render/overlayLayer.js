@@ -91,6 +91,7 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
     layer.setAttribute(LAYER_ATTRIBUTES.layerTargetId, themeElement.id);
     layer.setAttribute(LAYER_ATTRIBUTES.visible, 'true');
     layer.style.zIndex = String(getDomDepth(themeElement.dataNode));
+    classifyPositionStrategy(themeElement.dataNode);
     positionLayer(layer, themeElement.dataNode);
 
     const checkbox = document.createElement('input');
@@ -283,6 +284,7 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
     resizeObserver.unobserve(themeElement.dataNode);
     themeElement.instanceLayer.remove();
     themeElement.dataNode?.removeAttribute(LAYER_ATTRIBUTES.layerId);
+    themeElement.dataNode?.removeAttribute(LAYER_ATTRIBUTES.positionStrategy);
     const index = themeElements.indexOf(themeElement);
     if (index !== -1) themeElements.splice(index, 1);
     themeElement.instanceLayer = null;
@@ -291,18 +293,156 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
 
   /**
    * Sizes and positions an overlay layer to match a reference element's
-   * current bounding box, accounting for page scroll.
+   * current bounding box. Branches on `refElement`'s cached
+   * `LAYER_ATTRIBUTES.positionStrategy` (set once by
+   * `classifyPositionStrategy`, never derived here) — for an element
+   * that's itself `position: fixed`, or a descendant of a clean,
+   * viewport-anchored `position: fixed` ancestor, the overlay is
+   * positioned `fixed` too, straight from the viewport-relative
+   * `getBoundingClientRect` values with no scroll offset added; setting
+   * `position` inline overrides the stylesheet's class-driven `position:
+   * absolute` (from `.instance-element`'s SCSS rule) with no SCSS changes
+   * needed, since inline style always wins over a class selector.
+   * Everything else keeps the ordinary document-relative math (accounting
+   * for page scroll) exactly as before.
    *
    * @param {Element} layer The overlay `<div>` to reposition.
    * @param {Element} refElement The real DOM element the overlay tracks.
    * @returns {void}
    */
   function positionLayer(layer, refElement) {
+    const isFixed = refElement.getAttribute(LAYER_ATTRIBUTES.positionStrategy) === 'fixed';
     const rect = refElement.getBoundingClientRect();
-    layer.style.top = `${Math.round(rect.top + window.scrollY)}px`;
-    layer.style.left = `${Math.round(rect.left + window.scrollX)}px`;
+    layer.style.position = isFixed ? 'fixed' : 'absolute';
+    layer.style.top = `${Math.round(rect.top + (isFixed ? 0 : window.scrollY))}px`;
+    layer.style.left = `${Math.round(rect.left + (isFixed ? 0 : window.scrollX))}px`;
     layer.style.width = `${Math.round(rect.width)}px`;
     layer.style.height = `${Math.round(rect.height)}px`;
+  }
+
+  /**
+   * Properties that establish a containing block for `position: fixed`
+   * descendants specifically — a stricter, different set than what
+   * affects `position: absolute` descendants (plain `relative`/
+   * `absolute`/`sticky` on an ancestor does *not* count here; only these
+   * do). Verified against the current CSS Positioned Layout / Transforms
+   * / Contain specs. Checked via `getComputedStyle`, never via a raw
+   * `style` attribute read, since these can come from a stylesheet rule
+   * just as easily as an inline style.
+   *
+   * @param {CSSStyleDeclaration} computedStyle Result of
+   *   `getComputedStyle(ancestor)` for the ancestor being tested.
+   * @returns {boolean} `true` if this ancestor breaks a descendant
+   *   `position: fixed` element's anchoring to the true viewport.
+   */
+  function establishesFixedContainingBlock(computedStyle) {
+    const hasNonNone = (prop) => computedStyle.getPropertyValue(prop) !== 'none';
+    if (['transform', 'translate', 'scale', 'rotate', 'perspective', 'filter'].some(hasNonNone)) {
+      return true;
+    }
+    if (computedStyle.getPropertyValue('backdrop-filter') !== 'none'
+      || computedStyle.getPropertyValue('-webkit-backdrop-filter') !== 'none') {
+      return true;
+    }
+    if (computedStyle.getPropertyValue('content-visibility') === 'auto') {
+      return true;
+    }
+    const willChange = computedStyle.getPropertyValue('will-change');
+    if (['transform', 'perspective', 'filter', 'contain'].some((name) => willChange.includes(name))) {
+      return true;
+    }
+    const contain = computedStyle.getPropertyValue('contain');
+    return ['layout', 'paint', 'strict', 'content'].some((name) => contain.includes(name));
+  }
+
+  /**
+   * Classifies, once, whether `dataNode` should be tracked as
+   * `position: fixed` (itself, or a descendant of a clean, viewport-
+   * anchored `position: fixed` ancestor) or with the ordinary document-
+   * relative strategy — and caches the result as
+   * `LAYER_ATTRIBUTES.positionStrategy` directly on `dataNode`, the only
+   * thing `positionLayer` ever reads. Deliberately runs once, when an
+   * element is first added to tracking (see `buildInstanceLayer`), not on
+   * every position-sync tick — seeing whether an element sits inside a
+   * fixed ancestor is normally a static fact of the page's structure for
+   * that element's lifetime, and a `getComputedStyle` walk per element per
+   * animation frame would be real, avoidable cost on top of the
+   * `getBoundingClientRect` calls already happening there. If an
+   * element's classification genuinely needs to change later, the
+   * existing AJAX/BigPipe reconciliation already reclassifies from
+   * scratch whenever an element is removed-and-re-added.
+   *
+   * Walks from `dataNode` upward (checking `dataNode` itself first) for
+   * the nearest `position: fixed` ancestor, short-circuiting instantly if
+   * it encounters an ancestor already marked
+   * `LAYER_ATTRIBUTES.fixedContainingBlock` by a *previous* element's
+   * classification — but only after revalidating that marker with one
+   * `getComputedStyle` check, not by trusting it blindly: without that
+   * revalidation, a marker written once and never invalidated would
+   * misclassify future elements once that ancestor's CSS later toggles
+   * away from `position: fixed` (e.g. a header that switches between
+   * `fixed`/`static` via a scroll-driven class toggle). Once a fixed
+   * ancestor is found (freshly, or confirmed-still-valid via the marker),
+   * continues walking upward from it checking every remaining ancestor
+   * via `establishesFixedContainingBlock` — if any is found, that fixed
+   * ancestor isn't actually anchored to the true viewport (something
+   * between it and the viewport intercepts it), so the safe fallback is
+   * "not fixed". Otherwise, the fixed ancestor is confirmed clean: it gets
+   * marked for future elements to short-circuit on, and `dataNode` is
+   * classified `'fixed'`.
+   *
+   * @param {Element} dataNode The real page element to classify.
+   * @returns {void}
+   */
+  function classifyPositionStrategy(dataNode) {
+    let fixedAncestor = null;
+    // Distinguishes "found via a revalidated marker, already proven clean
+    // by whichever earlier element set it — skip re-walking for
+    // neutralizers" from "freshly discovered here — still needs that walk
+    // before it can be trusted or marked."
+    let confirmedClean = false;
+    let node = dataNode;
+
+    while (node && node !== document.documentElement) {
+      if (node.hasAttribute(LAYER_ATTRIBUTES.fixedContainingBlock)) {
+        if (window.getComputedStyle(node).position === 'fixed') {
+          fixedAncestor = node;
+          confirmedClean = true;
+          break;
+        }
+        // Stale — this ancestor's CSS no longer makes it fixed. Strip the
+        // marker so nothing else short-circuits on it either, and fall
+        // through to the normal check on this same node below.
+        node.removeAttribute(LAYER_ATTRIBUTES.fixedContainingBlock);
+      }
+
+      if (window.getComputedStyle(node).position === 'fixed') {
+        fixedAncestor = node;
+        break;
+      }
+
+      node = node.parentElement;
+    }
+
+    if (!fixedAncestor) return;
+
+    if (!confirmedClean) {
+      let neutralized = false;
+      let ancestor = fixedAncestor.parentElement;
+      while (ancestor && ancestor !== document.documentElement) {
+        if (establishesFixedContainingBlock(window.getComputedStyle(ancestor))) {
+          neutralized = true;
+          break;
+        }
+        ancestor = ancestor.parentElement;
+      }
+
+      if (neutralized) return;
+
+      fixedAncestor.setAttribute(LAYER_ATTRIBUTES.fixedContainingBlock, 'true');
+    }
+
+    dataNode.setAttribute(LAYER_ATTRIBUTES.positionStrategy, 'fixed');
   }
 
   /**
