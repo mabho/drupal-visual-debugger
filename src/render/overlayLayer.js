@@ -590,6 +590,27 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
    * two stuck/unstuck transition instants (see `handleStickyIntersection`)
    * — no per-frame or per-scroll-pixel cost either way.
    *
+   * The observer's `rootMargin` shrinks the root's effective top edge by
+   * `stickyAncestor`'s own resolved `top` offset. Without this, the
+   * sentinel — sitting flush against the sticky ancestor, at its natural
+   * pre-stuck position — would only cross the *unadjusted* root edge,
+   * which for any non-zero `top` is later (in scroll terms) than when the
+   * element actually starts sticking: stickiness kicks in as soon as the
+   * element's natural position would place it *above* its `top` offset,
+   * not only once it reaches the very edge. `getComputedStyle` already
+   * resolves `calc()`, `rem`, and CSS custom properties (e.g. Drupal
+   * core's `--drupal-displace-offset-top`) down to one final px number,
+   * so no manual unit math is needed here. Doing this via `rootMargin`
+   * rather than, say, a compensating margin on the sentinel itself avoids
+   * ever mutating the sentinel's own CSS, which would otherwise risk
+   * retriggering this module's own `MutationObserver`.
+   *
+   * Known limitation: the offset is resolved once, here, at group-creation
+   * time. If it later changes (e.g. Drupal's toolbar tray opening/closing
+   * live-updates `--drupal-displace-offset-top`), this group's `rootMargin`
+   * goes stale until the group is torn down and recreated (e.g. via the
+   * element being removed and rediscovered) — not handled in this pass.
+   *
    * @param {Element} stickyAncestor The sticky element to track.
    * @returns {StickyGroup} The new, empty (no `members` yet) group.
    */
@@ -598,6 +619,8 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
     sentinel.setAttribute(LAYER_ATTRIBUTES.stickySentinelMarker, 'true');
     sentinel.style.cssText = 'height:1px;margin:0;padding:0;';
     stickyAncestor.parentElement.insertBefore(sentinel, stickyAncestor);
+
+    const stickyTopOffsetPx = parseFloat(window.getComputedStyle(stickyAncestor).top) || 0;
 
     /** @type {StickyGroup} */
     const group = {
@@ -610,7 +633,7 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
 
     group.observer = new IntersectionObserver(
       (entries) => entries.forEach((entry) => handleStickyIntersection(group, entry)),
-      { root: group.root },
+      { root: group.root, rootMargin: `-${stickyTopOffsetPx}px 0px 0px 0px` },
     );
     group.observer.observe(sentinel);
 
