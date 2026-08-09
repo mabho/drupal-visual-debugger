@@ -260,7 +260,9 @@ export function createControllerPanel(options = {}) {
 
   /**
    * Builds the "List" tab: one `generateListItem` row per theme element
-   * found on the page, in document order.
+   * found on the page, in document order, plus an "All Elements" switch
+   * (mirroring the Filters tab's own — see `generateFiltersTab`) that
+   * shows/hides every element's overlay at once.
    *
    * @returns {Element} The List tab panel, not yet attached to the DOM.
    */
@@ -278,6 +280,36 @@ export function createControllerPanel(options = {}) {
     themeElements.forEach((themeElement) => {
       content.appendChild(generateListItem(themeElement));
     });
+
+    const allItem = document.createElement('div');
+    allItem.classList.add(CLASS_NAMES.listElementItemSelectAll);
+
+    // Reuses `listItemActivation`'s styling (a full-width, labeled row),
+    // not `listItemVisibility` (the narrow, icon-only per-row eye toggle)
+    // — the latter has no room for a label and would render cramped here.
+    // Its `[data-vd-list-item-activated='true']` selection-highlight rule
+    // never applies to this switch since nothing ever sets that attribute
+    // on it (it's not a real theme-element row, just a batch action).
+    const allSwitch = createOnOffSwitch({
+      label: strings.allElements,
+      checked: true,
+      wrapperClasses: [CLASS_NAMES.listItemActivation],
+      iconOn: CLASS_NAMES.iconToggleOn,
+      iconOff: CLASS_NAMES.iconToggleOff,
+    });
+
+    allSwitch.wrapper.addEventListener('click', () => {
+      const next = !allSwitch.input.checked;
+      allSwitch.setChecked(next);
+      // `setThemeElementVisible` already calls the affected row's own
+      // `listRow.setVisible` internally (see overlayLayer.js's
+      // `setVisible`) — same as `applyFilterVisible` relies on for the
+      // Filters tab, no separate call needed here.
+      themeElements.forEach((themeElement) => overlay?.setThemeElementVisible(themeElement, next));
+    });
+
+    allItem.appendChild(allSwitch.wrapper);
+    content.prepend(allItem);
 
     layer.append(title, content);
     return layer;

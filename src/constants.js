@@ -102,6 +102,7 @@ export const CLASS_NAMES = {
   listItemActivation: 'list-item__activation',
   listItemActivationHover: 'list-item__activation--hover',
   listItemVisibility: 'list-item__visibility',
+  listElementItemSelectAll: 'list-item--select-all',
 
   // Filters tab.
   filtersElement: 'filters',
