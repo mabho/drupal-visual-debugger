@@ -55,6 +55,17 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
   /** @type {ControllerHooks|null} */
   let controllerHooks = null;
 
+  /**
+   * One entry per distinct `position: sticky` ancestor found on the page —
+   * see `setupStickyTracking`/`createStickyGroup`. Real pages almost
+   * always have only a handful of distinct sticky containers (a header,
+   * maybe a sidebar) regardless of how many theme elements are tracked,
+   * so this stays small independent of page size.
+   *
+   * @type {Map<Element, StickyGroup>}
+   */
+  const stickyGroupsByAncestor = new Map();
+
   themeElements.forEach((themeElement) => {
     const instanceLayer = buildInstanceLayer(themeElement);
     themeElement.instanceLayer = instanceLayer;
@@ -92,6 +103,13 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
     layer.setAttribute(LAYER_ATTRIBUTES.visible, 'true');
     layer.style.zIndex = String(getDomDepth(themeElement.dataNode));
     classifyPositionStrategy(themeElement.dataNode);
+    // Sticky only needs live tracking if the element isn't already
+    // unconditionally fixed — a genuinely-fixed element needs nothing
+    // further, and checking here (rather than inside `setupStickyTracking`
+    // itself) keeps that function focused on sticky detection alone.
+    if (themeElement.dataNode.getAttribute(LAYER_ATTRIBUTES.positionStrategy) !== 'fixed') {
+      setupStickyTracking(themeElement);
+    }
     positionLayer(layer, themeElement.dataNode);
 
     const checkbox = document.createElement('input');
@@ -281,6 +299,7 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
   function removeThemeElement(themeElement) {
     if (!themeElement.instanceLayer) return;
     if (isChecked(themeElement)) setChecked(themeElement, false);
+    detachFromStickyGroup(themeElement);
     resizeObserver.unobserve(themeElement.dataNode);
     themeElement.instanceLayer.remove();
     themeElement.dataNode?.removeAttribute(LAYER_ATTRIBUTES.layerId);
@@ -446,6 +465,231 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
   }
 
   /**
+   * One shared tracking rig per distinct `position: sticky` ancestor —
+   * see `createStickyGroup`.
+   *
+   * @typedef {object} StickyGroup
+   * @property {Element} stickyAncestor The `position: sticky` element
+   *   itself (nearest one found walking up from a tracked `dataNode`).
+   * @property {Element|null} root The `IntersectionObserver` root — the
+   *   nearest ancestor scroll container, or `null` for the viewport.
+   * @property {Element} sentinel The tiny marker `<div>` inserted as a
+   *   real sibling immediately before `stickyAncestor`.
+   * @property {IntersectionObserver} observer Watches `sentinel` against
+   *   `root`.
+   * @property {import('../model/themeElement.js').ThemeElement[]} members
+   *   Every tracked theme element resolving to this same sticky ancestor.
+   */
+
+  /**
+   * Finds the nearest `position: sticky` ancestor (including `dataNode`
+   * itself) that could plausibly ever actually stick — i.e. also has at
+   * least one of `top`/`right`/`bottom`/`left` not `auto` (a bare
+   * `position: sticky` with no offset behaves exactly like `position:
+   * relative` and never pins, so there's no point building tracking for
+   * it). Scoped to `top`-stickiness only for now (see this feature's
+   * "Known limitations" — `bottom`/`left`/`right`-sticky elements are
+   * simply never matched here, falling back to the ordinary absolute+
+   * scroll strategy like any other in-flow content).
+   *
+   * @param {Element} dataNode The real page element to search from.
+   * @returns {Element|null} The nearest usable sticky ancestor, or `null`.
+   */
+  function findStickyAncestor(dataNode) {
+    let node = dataNode;
+    while (node && node !== document.documentElement) {
+      const style = window.getComputedStyle(node);
+      if (style.position === 'sticky' && style.getPropertyValue('top') !== 'auto') {
+        return node;
+      }
+      node = node.parentElement;
+    }
+    return null;
+  }
+
+  /**
+   * Finds the nearest ancestor that is genuinely, actively user-scrollable
+   * — the correct `root` for an `IntersectionObserver` watching a sentinel
+   * near `element`. `null` (meaning the viewport) if none exists, which is
+   * both the common case for a page-level sticky header AND the safe
+   * default whenever nothing more specific is confirmed.
+   *
+   * Deliberately stricter than "computed overflow isn't `visible`":
+   * - Only `auto`/`scroll` qualify, not `hidden`/`clip` — `hidden` clips
+   *   content but isn't a container a user actually scrolls; treating it
+   *   as one produces a root whose own bounding rect (via
+   *   `getBoundingClientRect`, always viewport-relative) spans however
+   *   much of the *page* that element renders, not the visible viewport —
+   *   since nothing genuinely scrolls *inside* it, intersection against
+   *   that oversized rect only flips once the sentinel scrolls out of the
+   *   element's entire rendered extent, not the viewport, which reads as
+   *   "the stuck transition doesn't fire until the sentinel leaves the
+   *   whole page." A real, confirmed failure mode, not a hypothetical one.
+   * - Also requires genuine overflow (`scrollHeight`/`scrollWidth`
+   *   exceeding the client box) — a declared-but-inactive `overflow: auto`
+   *   with nothing to scroll shouldn't qualify either.
+   * - `document.body`/`document.documentElement` are never returned even
+   *   if they'd otherwise match (e.g. a `body { overflow-x: hidden }`
+   *   reset, common for suppressing accidental horizontal scrollbars, was
+   *   the concrete case that surfaced this) — real page-level scrolling
+   *   should just use `root: null`, which is unconditionally correct and
+   *   carries none of the above risk; treating body/html as a stand-in
+   *   for the same thing is exactly what caused it.
+   *
+   * @param {Element} element Ancestor search starts at `element.parentElement`.
+   * @returns {Element|null} The nearest genuinely scrollable ancestor, or `null`.
+   */
+  function findScrollContainer(element) {
+    let node = element.parentElement;
+    while (node && node !== document.documentElement && node !== document.body) {
+      const style = window.getComputedStyle(node);
+      const scrollsY = (style.overflowY === 'auto' || style.overflowY === 'scroll') && node.scrollHeight > node.clientHeight;
+      const scrollsX = (style.overflowX === 'auto' || style.overflowX === 'scroll') && node.scrollWidth > node.clientWidth;
+      if (scrollsY || scrollsX) return node;
+      node = node.parentElement;
+    }
+    return null;
+  }
+
+  /**
+   * Live, transition-driven counterpart to `classifyPositionStrategy` for
+   * elements that aren't unconditionally fixed but do sit under a
+   * `position: sticky` ancestor — sticky can't be classified once and
+   * cached forever the way fixed can, since whether it's *currently*
+   * pinned changes continuously with scroll position, with no
+   * `getComputedStyle` signal that reveals which state it's in at any
+   * given moment. Detects the sticky ancestor (if any), then joins or
+   * creates its shared `StickyGroup` (see `createStickyGroup`) — many
+   * theme elements commonly resolve to the very same sticky ancestor
+   * (e.g. several tracked elements inside one header), so only the first
+   * one actually creates a sentinel/observer.
+   *
+   * @param {import('../model/themeElement.js').ThemeElement} themeElement
+   *   The theme element to wire up live sticky tracking for, if applicable.
+   * @returns {void}
+   */
+  function setupStickyTracking(themeElement) {
+    const stickyAncestor = findStickyAncestor(themeElement.dataNode);
+    if (!stickyAncestor) return;
+
+    let group = stickyGroupsByAncestor.get(stickyAncestor);
+    if (!group) {
+      group = createStickyGroup(stickyAncestor);
+      stickyGroupsByAncestor.set(stickyAncestor, group);
+    }
+    group.members.push(themeElement);
+    themeElement.stickyGroup = group;
+  }
+
+  /**
+   * Builds a new `StickyGroup` for a just-discovered sticky ancestor: an
+   * invisible-in-effect sentinel (a real, in-flow sibling — `height: 1px;
+   * margin: 0; padding: 0`, negligible but real layout footprint) inserted
+   * immediately before it, watched by an `IntersectionObserver` rooted at
+   * its nearest actual scroll container. The observer fires only at the
+   * two stuck/unstuck transition instants (see `handleStickyIntersection`)
+   * — no per-frame or per-scroll-pixel cost either way.
+   *
+   * @param {Element} stickyAncestor The sticky element to track.
+   * @returns {StickyGroup} The new, empty (no `members` yet) group.
+   */
+  function createStickyGroup(stickyAncestor) {
+    const sentinel = document.createElement('div');
+    sentinel.setAttribute(LAYER_ATTRIBUTES.stickySentinelMarker, 'true');
+    sentinel.style.cssText = 'height:1px;margin:0;padding:0;';
+    stickyAncestor.parentElement.insertBefore(sentinel, stickyAncestor);
+
+    /** @type {StickyGroup} */
+    const group = {
+      stickyAncestor,
+      root: findScrollContainer(stickyAncestor),
+      sentinel,
+      observer: null,
+      members: [],
+    };
+
+    group.observer = new IntersectionObserver(
+      (entries) => entries.forEach((entry) => handleStickyIntersection(group, entry)),
+      { root: group.root },
+    );
+    group.observer.observe(sentinel);
+
+    return group;
+  }
+
+  /**
+   * Interprets one `IntersectionObserver` entry for a sticky group's
+   * sentinel as a stuck/unstuck transition (or a no-op, for an
+   * indeterminate/irrelevant entry) and applies the result.
+   *
+   * @param {StickyGroup} group The group whose sentinel triggered this entry.
+   * @param {IntersectionObserverEntry} entry
+   * @returns {void}
+   */
+  function handleStickyIntersection(group, entry) {
+    if (entry.isIntersecting) {
+      applyStuck(group, false);
+      return;
+    }
+    // `rootBounds` can be `null` per spec (e.g. root not renderable) —
+    // treat as indeterminate rather than risk a crash reading `.top` off
+    // it. Also confirm the exit was specifically past the *top* edge —
+    // this feature only tracks top-stickiness (see `findStickyAncestor`).
+    if (!entry.rootBounds || entry.boundingClientRect.top >= entry.rootBounds.top) return;
+    applyStuck(group, true);
+  }
+
+  /**
+   * Applies a stuck/unstuck transition to every member of `group`.
+   * Revalidates that `stickyAncestor` is still actually CSS-`sticky`
+   * before honoring a "stuck" transition — the sentinel's intersection is
+   * pure scroll geometry and fires regardless of whether the ancestor is
+   * still sticky at that moment; without this check, a responsive
+   * breakpoint that toggles `sticky` off via a class swap would pin an
+   * overlay over an element that's actually back in ordinary flow. The
+   * sticky-specific analogue of `classifyPositionStrategy`'s marker
+   * revalidation for the fixed case.
+   *
+   * @param {StickyGroup} group
+   * @param {boolean} stuck Whether the sentinel signaled a transition to stuck.
+   * @returns {void}
+   */
+  function applyStuck(group, stuck) {
+    const confirmedStuck = stuck && window.getComputedStyle(group.stickyAncestor).position === 'sticky';
+    group.members.forEach((themeElement) => {
+      if (confirmedStuck) themeElement.dataNode.setAttribute(LAYER_ATTRIBUTES.positionStrategy, 'fixed');
+      else themeElement.dataNode.removeAttribute(LAYER_ATTRIBUTES.positionStrategy);
+      positionLayer(themeElement.instanceLayer, themeElement.dataNode);
+    });
+  }
+
+  /**
+   * Reverses `setupStickyTracking` for one element: splices it out of its
+   * group's `members`, and — once a group has no members left — tears the
+   * whole group down (disconnects the observer, removes the sentinel from
+   * the document, drops the Map entry) so nothing keeps tracking a sticky
+   * ancestor nobody cares about anymore. No-op if `themeElement` was never
+   * part of a sticky group.
+   *
+   * @param {import('../model/themeElement.js').ThemeElement} themeElement
+   * @returns {void}
+   */
+  function detachFromStickyGroup(themeElement) {
+    const group = themeElement.stickyGroup;
+    if (!group) return;
+    themeElement.stickyGroup = null;
+
+    const index = group.members.indexOf(themeElement);
+    if (index !== -1) group.members.splice(index, 1);
+
+    if (group.members.length === 0) {
+      group.observer.disconnect();
+      group.sentinel.remove();
+      stickyGroupsByAncestor.delete(group.stickyAncestor);
+    }
+  }
+
+  /**
    * Counts how many ancestors an element has, used to derive a `z-index`
    * so more deeply nested overlays draw on top of their containers'.
    *
@@ -593,6 +837,21 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
 
       mutations.forEach((mutation) => {
         if (baseLayer.contains(mutation.target)) return;
+        // Inserting/removing a sticky-tracking sentinel (see
+        // `createStickyGroup`/`detachFromStickyGroup`) is a real childList
+        // mutation on a real page node — `mutation.target` there is the
+        // sentinel's *parent*, never the sentinel itself, so the
+        // `baseLayer.contains` check above can't catch it; check the
+        // actual added/removed nodes instead. Without this, every sticky
+        // group created/torn down would otherwise trigger a pointless
+        // position resync and a full comment-tree rescan for zero actual
+        // page content change.
+        const touchedNodes = [...mutation.addedNodes, ...mutation.removedNodes];
+        if (touchedNodes.length > 0 && touchedNodes.every((node) => (
+          node.nodeType === Node.ELEMENT_NODE && node.hasAttribute(LAYER_ATTRIBUTES.stickySentinelMarker)
+        ))) {
+          return;
+        }
         relevantForPosition = true;
         // Attribute-only mutations (including the parser's own
         // `data-vd-id` stamp on a just-matched node) can never introduce
@@ -645,10 +904,13 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
    * listeners attached directly to them, with it — those don't need
    * separate removal since nothing outside this removed subtree
    * references them), strips the `data-vd-id` attribute the parser left
-   * on each real page element, and clears the `instanceLayer`/`listRow`
-   * references each `themeElement` was carrying so a stale
-   * `themeElements` array a consumer might still be holding doesn't keep
-   * detached DOM/closures alive.
+   * on each real page element, disconnects every remaining sticky group's
+   * `IntersectionObserver` and removes its sentinel from the document
+   * (mirroring the per-group teardown in `detachFromStickyGroup`, done in
+   * bulk here since every element is going away at once), and clears the
+   * `instanceLayer`/`listRow`/`stickyGroup` references each `themeElement`
+   * was carrying so a stale `themeElements` array a consumer might still
+   * be holding doesn't keep detached DOM/closures alive.
    *
    * @returns {void}
    */
@@ -658,10 +920,17 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
     disconnectPositionObservers();
     baseLayer.remove();
 
+    stickyGroupsByAncestor.forEach((group) => {
+      group.observer.disconnect();
+      group.sentinel.remove();
+    });
+    stickyGroupsByAncestor.clear();
+
     themeElements.forEach((themeElement) => {
       themeElement.dataNode?.removeAttribute(LAYER_ATTRIBUTES.layerId);
       themeElement.instanceLayer = null;
       themeElement.listRow = null;
+      themeElement.stickyGroup = null;
     });
   }
 

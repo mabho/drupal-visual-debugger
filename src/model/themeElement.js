@@ -7,6 +7,12 @@
  * @property {string|null} filePath       Path to the active template file.
  * @property {Element|null} dataNode      The real DOM element this entry describes.
  * @property {Element|null} instanceLayer Populated later by the overlay engine.
+ * @property {import('../render/overlayLayer.js').StickyGroup|null} stickyGroup
+ *   Populated later by the overlay engine's `setupStickyTracking`, only if
+ *   `dataNode` sits under a `position: sticky` ancestor — the shared group
+ *   object (one per distinct sticky ancestor, since many theme elements
+ *   commonly share one) used to flip this element's positioning strategy
+ *   live as it stuck/unsticks, and to find/detach it on removal.
  */
 
 /**
@@ -25,5 +31,6 @@ export function createEmptyThemeElement() {
     filePath: null,
     dataNode: null,
     instanceLayer: null,
+    stickyGroup: null,
   };
 }

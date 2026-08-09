@@ -155,6 +155,13 @@ export const LAYER_ATTRIBUTES = {
   // same ancestor stop immediately instead of re-deriving it. Revalidated
   // (not blindly trusted) on each use — see `classifyPositionStrategy`.
   fixedContainingBlock: 'data-vd-fixed-root',
+  // Marks the tiny sentinel `<div>` overlayLayer.js's `createStickyGroup`
+  // inserts as a real sibling of a `position: sticky` ancestor, watched by
+  // an `IntersectionObserver` to detect stuck/unstuck transitions. Read by
+  // `observePositionChanges`'s `MutationObserver` filter so inserting/
+  // removing this element doesn't itself trigger a position resync or a
+  // full comment-tree rescan.
+  stickySentinelMarker: 'data-vd-sticky-sentinel',
 };
 
 export const STORAGE_KEYS = {
