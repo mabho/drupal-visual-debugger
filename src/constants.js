@@ -76,6 +76,11 @@ export const CLASS_NAMES = {
   iconControllerDeactivated: 'icon-controller-deactivated',
   iconCopyToClipboard: 'icon-copy',
   iconSlideResize: 'icon-slide-resize',
+  // Icomoon's chevron/"navigate_next" glyph — used as the Branched
+  // sub-view's disclosure control (see generateTreeItem), rotated via
+  // CSS rather than swapped for a different glyph to indicate expanded
+  // vs collapsed.
+  iconNavigateNext: 'icon-navigate-next',
   clickDragButton: 'click-drag-button',
 
   // "No debug data" placeholder (shown instead of the tab bar/panels when
@@ -95,7 +100,10 @@ export const CLASS_NAMES = {
   tabActive: 'active',
   navTarget: 'nav-target',
 
-  // List tab.
+  // List tab (internal DOM vocabulary kept as-is even though the tab's
+  // rendered label is now "Items" — see defaultStrings.js's `tabItems` —
+  // since existing external CSS and querySelector call sites depend on
+  // these exact class/id names).
   listElement: 'list',
   listElementContent: 'list__content',
   listItem: 'list-item',
@@ -103,6 +111,25 @@ export const CLASS_NAMES = {
   listItemActivationHover: 'list-item__activation--hover',
   listItemVisibility: 'list-item__visibility',
   listElementItemSelectAll: 'list-item--select-all',
+
+  // Items tab's Listed/Branched sub-view switcher.
+  itemsSubViewSwitcher: 'items-subview-switcher',
+  itemsSubViewButton: 'items-subview-switcher__button',
+  // Reuses `tabActive` (the same "active" class the top-level Selected/
+  // Items/Filters tab buttons already use) for the active sub-view
+  // button, rather than adding a redundant second "active" class.
+
+  // Items tab's Branched (tree) sub-view.
+  branchedElement: 'branched',
+  branchedElementContent: 'branched__content',
+  branchedItem: 'branched-item',
+  branchedItemRow: 'branched-item__row',
+  branchedItemChildren: 'branched-item__children',
+  branchedItemDisclosure: 'branched-item__disclosure',
+  // Presence toggles a node's children container closed; absence (the
+  // default for a never-toggled node) means expanded — mirrors how
+  // `tabActive` is presence-only with no separate "inactive" class.
+  branchedItemCollapsed: 'branched-item--collapsed',
 
   // Filters tab.
   filtersElement: 'filters',
@@ -168,9 +195,11 @@ export const LAYER_ATTRIBUTES = {
 export const STORAGE_KEYS = {
   debuggerActivated: 'debuggerActivated',
   controllerWidth: 'controllerWidth',
+  itemsSubView: 'itemsSubView',
 };
 
 export const DEFAULTS = {
   initialControllerWidth: '400px',
   controllerDeactivatedGap: 10,
+  itemsSubView: 'listed',
 };

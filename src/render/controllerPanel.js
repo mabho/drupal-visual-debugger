@@ -13,8 +13,9 @@ import panelStyles from '../../generated/panelStyles.css';
 
 /**
  * Builds the fly-out inspector panel: activation toggle, tabbed
- * Selected/List views, active element info, theme suggestions, template
- * file path, and the click-drag resize handle.
+ * Selected/Items (Listed/Branched sub-views)/Filters views, active
+ * element info, theme suggestions, template file path, and the
+ * click-drag resize handle.
  *
  * This is a factory, not a singleton — each call returns an independent
  * instance with its own closured state, unlike the original
@@ -28,9 +29,9 @@ import panelStyles from '../../generated/panelStyles.css';
  * @param {Partial<typeof defaultStrings>} [options.strings] Overrides
  *   merged over `defaultStrings` — e.g. `Drupal.t()`-resolved translations.
  * @param {import('../model/themeElement.js').ThemeElement[]} [options.themeElements]
- *   Every theme element found on the page — needed to build the List tab.
+ *   Every theme element found on the page — needed to build the Items tab.
  * @param {ReturnType<typeof import('./overlayLayer.js').createOverlayEngine>} [options.overlay]
- *   Used by the List tab to select/show/hide/hover a theme element's
+ *   Used by the Items tab to select/show/hide/hover a theme element's
  *   overlay without going through synthetic DOM click()s.
  * @returns {object} Controller panel instance (see bottom of file for shape).
  */
@@ -75,6 +76,20 @@ export function createControllerPanel(options = {}) {
   // gets called (construction time, or later if the panel started in the
   // empty state and this is the first dynamically-added element).
   let filterGroupsByType = new Map();
+  // Items tab's Branched sub-view state. `collapsedById` tracks each
+  // node's collapsed/expanded state independent of the DOM, keyed by
+  // `themeElement.id` (parser-assigned once, stable for that object's
+  // whole lifetime) so it survives `rebuildBranchedView`'s full rebuilds;
+  // no entry means expanded (the default for a never-toggled node).
+  // Entries are deleted in `removeThemeElement` so a long-running,
+  // AJAX-heavy page doesn't leak entries for elements that no longer
+  // exist. `branchedViewBuilt`/`branchedViewDirty`/
+  // `branchedRefreshScheduled` are read/set by `applyItemsSubView`/
+  // `rebuildBranchedView`/`scheduleBranchedRefresh` — see each.
+  let collapsedById = new Map();
+  let branchedViewBuilt = false;
+  let branchedViewDirty = false;
+  let branchedRefreshScheduled = false;
 
   /**
    * The theme element the "Selected Element" panel should currently show:
@@ -203,7 +218,7 @@ export function createControllerPanel(options = {}) {
       },
       {
         id: IDS.controllerButtonList,
-        label: strings.tabList,
+        label: strings.tabItems,
         targetId: IDS.controllerElementList,
       },
       {
@@ -259,21 +274,154 @@ export function createControllerPanel(options = {}) {
   }
 
   /**
-   * Builds the "List" tab: one `generateListItem` row per theme element
-   * found on the page, in document order, plus an "All Elements" switch
-   * (mirroring the Filters tab's own — see `generateFiltersTab`) that
-   * shows/hides every element's overlay at once.
+   * Builds the "Items" tab (formerly labeled "List" — the internal DOM
+   * vocabulary, `IDS.controllerElementList`/`CLASS_NAMES.listElement`/
+   * etc., is kept exactly as-is on purpose, since existing external CSS
+   * and querySelector call sites depend on it; only the rendered label
+   * changed — see defaultStrings.js's `tabItems`): a Listed/Branched
+   * sub-view switcher, the existing flat Listed view (unchanged
+   * behavior, via `generateListedSubView`), and the new Branched tree
+   * view (built lazily — see `applyItemsSubView`).
    *
-   * @returns {Element} The List tab panel, not yet attached to the DOM.
+   * @returns {Element} The Items tab panel, not yet attached to the DOM.
    */
-  function generateListTab() {
+  function generateItemsTab() {
     const layer = document.createElement('div');
     layer.id = IDS.controllerElementList;
     layer.classList.add(CLASS_NAMES.listElement, CLASS_NAMES.navTarget);
 
     const title = document.createElement('h3');
-    title.textContent = strings.tabList;
+    title.textContent = strings.tabItems;
 
+    const switcher = generateItemsSubViewSwitcher();
+
+    // Deliberately NOT `CLASS_NAMES.navTarget` on either sub-view
+    // container: `.list__content`/`.branched__content` already carry
+    // their own unconditional `display: flex` rule (for their own
+    // internal layout), at the same specificity as `.nav-target`'s
+    // `display: none` — a tie that `.list__content`/`.branched__content`
+    // always won (their rule compiles later in the stylesheet), so the
+    // sub-view that should've been hidden never actually was, regardless
+    // of which had the `active` class. See the dedicated
+    // `.list__content:not(.active)`/`.branched__content:not(.active)`
+    // SCSS rules instead, which unambiguously outrank the plain
+    // `display: flex` rule by specificity rather than relying on source
+    // order.
+    const listedContainer = generateListedSubView();
+
+    const branchedContainer = document.createElement('div');
+    branchedContainer.classList.add(CLASS_NAMES.branchedElementContent);
+
+    layer.append(title, switcher, listedContainer, branchedContainer);
+
+    // Passes `layer` explicitly (not yet attached to `panelRoot`) rather
+    // than relying on `applyItemsSubView`'s `panelRoot`-based default —
+    // see that function's own doc comment for why.
+    applyItemsSubView(storage.get(STORAGE_KEYS.itemsSubView, DEFAULTS.itemsSubView), layer);
+
+    return layer;
+  }
+
+  /**
+   * Builds the activation ("select/deselect", labeled with the theme hook)
+   * and visibility ("show/hide") switches shared by both Items sub-views'
+   * rows (Listed's `generateListItem` and Branched's `generateTreeItem`),
+   * plus the `applyVisible` sync function each registers as its row's
+   * `listRow.setVisible`/`treeRow.setVisible`. Parameterized on real
+   * current state rather than hardcoding it — a latent bug fixed as part
+   * of adding the Branched sub-view: both switches used to hardcode their
+   * initial checked/visible state regardless of the element's actual
+   * current selection/visibility, harmless while rows were rarely
+   * rebuilt after construction, but very visible once Branched started
+   * fully rebuilding rows on every dynamic content change (a rebuilt row
+   * for an already-selected or already-hidden element would silently show
+   * the wrong state — worse, a hidden element's row would become
+   * clickable/selectable again, since the activation click handler gates
+   * on this same `visible` attribute).
+   *
+   * @param {import('../model/themeElement.js').ThemeElement} themeElement
+   *   The theme element this row represents.
+   * @param {object} options
+   * @param {boolean} options.initialSelected Real current selection state
+   *   — pass `overlay?.isThemeElementSelected(themeElement) ?? false`.
+   * @param {boolean} options.initialVisible Real current visibility state
+   *   — pass `overlay?.isThemeElementVisible(themeElement) ?? true`.
+   * @param {(visible: boolean) => void} [options.onVisibilityToggled]
+   *   Extra effect run after the visibility switch's own click applies
+   *   `overlay.setThemeElementVisible` — Branched rows use this to
+   *   cascade the change to every descendant (see `generateTreeItem`);
+   *   Listed rows, which have no descendants, leave it unset. Never
+   *   called from `applyVisible` itself (only from a real user click) —
+   *   `applyVisible` is a passive state-sync path, not a trigger point,
+   *   so an externally-driven sync (e.g. the Filters tab hiding this row)
+   *   doesn't redundantly re-cascade.
+   * @returns {{
+   *   activation: ReturnType<typeof createOnOffSwitch>,
+   *   visibility: ReturnType<typeof createOnOffSwitch>,
+   *   applyVisible: (visible: boolean) => void,
+   * }}
+   */
+  function buildRowControls(themeElement, { initialSelected, initialVisible, onVisibilityToggled }) {
+    const activation = createOnOffSwitch({
+      label: themeElement.propertyHook,
+      checked: initialSelected,
+      wrapperClasses: [CLASS_NAMES.listItemActivation, CLASS_NAMES.objectTypeTyped(themeElement.objectType)],
+      wrapperAttributes: { [LAYER_ATTRIBUTES.visible]: String(initialVisible) },
+      iconOn: CLASS_NAMES.iconSelectedTrue,
+      iconOff: CLASS_NAMES.iconSelectedFalse,
+    });
+
+    activation.wrapper.addEventListener('click', () => {
+      // A row hidden by a filter (Filters tab), or (Branched only) by a
+      // hidden ancestor's cascade, shouldn't be selectable.
+      if (activation.wrapper.getAttribute(LAYER_ATTRIBUTES.visible) === 'true') {
+        overlay?.toggleThemeElementSelection(themeElement);
+      }
+    });
+    activation.wrapper.addEventListener('mouseenter', () => overlay?.hoverThemeElement(themeElement));
+    activation.wrapper.addEventListener('mouseleave', () => overlay?.unhoverThemeElement(themeElement));
+
+    const visibility = createOnOffSwitch({
+      checked: initialVisible,
+      wrapperClasses: [CLASS_NAMES.listItemVisibility],
+      iconOn: CLASS_NAMES.iconToggleOn,
+      iconOff: CLASS_NAMES.iconToggleOff,
+    });
+
+    /**
+     * Syncs this row's own visibility switch + disabled look, without
+     * touching the overlay — used both by this row's own click (which also
+     * tells the overlay) and by listRow/treeRow.setVisible (called BY the
+     * overlay when visibility changes elsewhere, e.g. the Filters tab).
+     *
+     * @param {boolean} visible New visibility state to reflect.
+     * @returns {void}
+     */
+    function applyVisible(visible) {
+      visibility.setChecked(visible);
+      activation.wrapper.classList.toggle(CLASS_NAMES.inputWrapperDisabled, !visible);
+      activation.wrapper.setAttribute(LAYER_ATTRIBUTES.visible, String(visible));
+    }
+
+    visibility.wrapper.addEventListener('click', () => {
+      const nextVisible = !visibility.input.checked;
+      applyVisible(nextVisible);
+      overlay?.setThemeElementVisible(themeElement, nextVisible);
+      onVisibilityToggled?.(nextVisible);
+    });
+
+    return { activation, visibility, applyVisible };
+  }
+
+  /**
+   * Builds the Listed sub-view's content: one `generateListItem` row per
+   * theme element, in document order, plus an "All Elements" switch
+   * (mirroring the Filters tab's own — see `generateFiltersTab`) that
+   * shows/hides every element's overlay at once.
+   *
+   * @returns {Element} The Listed sub-view content, not yet attached to the DOM.
+   */
+  function generateListedSubView() {
     const content = document.createElement('div');
     content.classList.add(CLASS_NAMES.listElementContent);
 
@@ -311,17 +459,18 @@ export function createControllerPanel(options = {}) {
     allItem.appendChild(allSwitch.wrapper);
     content.prepend(allItem);
 
-    layer.append(title, content);
-    return layer;
+    return content;
   }
 
   /**
-   * Builds one List tab row for a single theme element: an "activation"
-   * switch (select/deselect this element, labeled with its theme hook) and
-   * a "visibility" eye switch (show/hide its overlay entirely). Registers
-   * `themeElement.listRow` so the overlay engine (selection) and the
-   * Filters tab (visibility) can keep this row's switches in sync when
-   * either changes from somewhere other than this row itself.
+   * Builds one Listed-sub-view row for a single theme element, via
+   * `buildRowControls` (no cascade hook — a flat row has no descendants).
+   * Registers `themeElement.listRow` so the overlay engine (selection/
+   * visibility) and the Filters tab (batch visibility) can keep this
+   * row's switches in sync when either changes from somewhere other than
+   * this row itself; a *separate* slot from `treeRow` (see
+   * themeElement.js's doc comment) since the Branched sub-view's row for
+   * the same element, if it currently exists, needs independent updates.
    *
    * @param {import('../model/themeElement.js').ThemeElement} themeElement
    *   The theme element this row represents.
@@ -331,57 +480,11 @@ export function createControllerPanel(options = {}) {
     const item = document.createElement('div');
     item.classList.add(CLASS_NAMES.listItem);
 
-    const activation = createOnOffSwitch({
-      label: themeElement.propertyHook,
-      checked: false,
-      wrapperClasses: [CLASS_NAMES.listItemActivation, CLASS_NAMES.objectTypeTyped(themeElement.objectType)],
-      wrapperAttributes: { [LAYER_ATTRIBUTES.visible]: 'true' },
-      iconOn: CLASS_NAMES.iconSelectedTrue,
-      iconOff: CLASS_NAMES.iconSelectedFalse,
+    const { activation, visibility, applyVisible } = buildRowControls(themeElement, {
+      initialSelected: overlay?.isThemeElementSelected(themeElement) ?? false,
+      initialVisible: overlay?.isThemeElementVisible(themeElement) ?? true,
     });
 
-    activation.wrapper.addEventListener('click', () => {
-      // A row hidden by a filter (Filters tab, added separately) shouldn't
-      // be selectable.
-      if (activation.wrapper.getAttribute(LAYER_ATTRIBUTES.visible) === 'true') {
-        overlay?.toggleThemeElementSelection(themeElement);
-      }
-    });
-    activation.wrapper.addEventListener('mouseenter', () => overlay?.hoverThemeElement(themeElement));
-    activation.wrapper.addEventListener('mouseleave', () => overlay?.unhoverThemeElement(themeElement));
-
-    const visibility = createOnOffSwitch({
-      checked: true,
-      wrapperClasses: [CLASS_NAMES.listItemVisibility],
-      iconOn: CLASS_NAMES.iconToggleOn,
-      iconOff: CLASS_NAMES.iconToggleOff,
-    });
-
-    /**
-     * Syncs this row's own visibility switch + disabled look, without
-     * touching the overlay — used both by this row's own click (which also
-     * tells the overlay) and by listRow.setVisible (called BY the overlay
-     * when visibility changes elsewhere, e.g. the Filters tab).
-     *
-     * @param {boolean} visible New visibility state to reflect.
-     * @returns {void}
-     */
-    function applyVisible(visible) {
-      visibility.setChecked(visible);
-      activation.wrapper.classList.toggle(CLASS_NAMES.inputWrapperDisabled, !visible);
-      activation.wrapper.setAttribute(LAYER_ATTRIBUTES.visible, String(visible));
-    }
-
-    visibility.wrapper.addEventListener('click', () => {
-      const nextVisible = !visibility.input.checked;
-      applyVisible(nextVisible);
-      overlay?.setThemeElementVisible(themeElement, nextVisible);
-    });
-
-    // Lets the overlay engine (and Filters tab) sync this row's activation
-    // switch and visibility switch when either changes from elsewhere, and
-    // lets `removeThemeElement` remove this exact row without needing a
-    // separate lookup table mapping theme elements to their DOM rows.
     themeElement.listRow = {
       setActivated: activation.setChecked,
       setVisible: applyVisible,
@@ -390,6 +493,314 @@ export function createControllerPanel(options = {}) {
 
     item.append(activation.wrapper, visibility.wrapper);
     return item;
+  }
+
+  /**
+   * Recursively cascades a visibility change from `themeElement` to every
+   * descendant found in `childrenOf` (from `deriveThemeElementTree`) — an
+   * unconditional batch action, not a tri-state: re-showing a parent
+   * re-shows every descendant regardless of whether any were individually
+   * hidden before the parent was hidden, mirroring the Filters tab's own
+   * documented "All Elements" philosophy (`applyFilterVisible`). Each
+   * descendant's `overlay.setThemeElementVisible` call already syncs that
+   * descendant's own `listRow`/`treeRow` internally — no separate sync
+   * needed here.
+   *
+   * @param {import('../model/themeElement.js').ThemeElement} themeElement
+   *   The node whose descendants (not itself) should cascade.
+   * @param {boolean} visible New visibility state to cascade.
+   * @param {Map<import('../model/themeElement.js').ThemeElement, import('../model/themeElement.js').ThemeElement[]>} childrenOf
+   *   The full tree's children-by-parent map, from `deriveThemeElementTree`.
+   * @returns {void}
+   */
+  function cascadeVisibilityToDescendants(themeElement, visible, childrenOf) {
+    (childrenOf.get(themeElement) ?? []).forEach((child) => {
+      overlay?.setThemeElementVisible(child, visible);
+      cascadeVisibilityToDescendants(child, visible, childrenOf);
+    });
+  }
+
+  /**
+   * Builds the Branched sub-view's tree structure fresh from the
+   * *current* `themeElements` array and live DOM ancestry — deliberately
+   * recomputed from scratch on every call rather than incrementally
+   * maintained, since incrementally reparenting orphaned children on
+   * removal is meaningfully more bug-prone than a cheap full recompute
+   * (O(n × domDepth) — a few thousand comparisons at most for a realistic
+   * page). This also means "reparent to the nearest surviving tracked
+   * ancestor" after a dynamic removal happens for free: nothing removal-
+   * specific needs to run, whoever's now nearest is simply found fresh.
+   *
+   * An element's parent is the nearest ancestor (walking up
+   * `dataNode.parentElement`) that is *also* a currently-tracked
+   * `dataNode` — not necessarily its immediate DOM parent, since
+   * untracked elements commonly sit in between. Elements with no such
+   * ancestor are roots.
+   *
+   * @returns {{
+   *   roots: import('../model/themeElement.js').ThemeElement[],
+   *   childrenOf: Map<import('../model/themeElement.js').ThemeElement, import('../model/themeElement.js').ThemeElement[]>,
+   * }} `roots` and each `childrenOf` array are in `themeElements` order.
+   *   `childrenOf` is the only map actually needed by both tree rendering
+   *   and the visibility cascade — a `parentOf` map isn't separately
+   *   required.
+   */
+  function deriveThemeElementTree() {
+    const byDataNode = new Map();
+    themeElements.forEach((themeElement) => byDataNode.set(themeElement.dataNode, themeElement));
+
+    const roots = [];
+    const childrenOf = new Map();
+
+    themeElements.forEach((themeElement) => {
+      let node = themeElement.dataNode.parentElement;
+      let parent = null;
+      while (node) {
+        if (byDataNode.has(node)) {
+          parent = byDataNode.get(node);
+          break;
+        }
+        node = node.parentElement;
+      }
+
+      if (parent) {
+        if (!childrenOf.has(parent)) childrenOf.set(parent, []);
+        childrenOf.get(parent).push(themeElement);
+      } else {
+        roots.push(themeElement);
+      }
+    });
+
+    return { roots, childrenOf };
+  }
+
+  /**
+   * Builds one Branched-sub-view row for `themeElement`: the same
+   * activation/visibility switches as `generateListItem` (via
+   * `buildRowControls`), plus — only if this element has children — a
+   * disclosure button and a nested children container holding
+   * recursively-built child rows. Indentation is purely structural: each
+   * nesting level's `.branched-item__children` container gets its own
+   * `padding-left` in SCSS, so depth-based indentation compounds
+   * naturally with no JS math needed. Registers `themeElement.treeRow` —
+   * a *separate* slot from `listRow` (see themeElement.js's doc comment
+   * for why both must exist independently).
+   *
+   * @param {import('../model/themeElement.js').ThemeElement} themeElement
+   *   The theme element this row represents.
+   * @param {Map<import('../model/themeElement.js').ThemeElement, import('../model/themeElement.js').ThemeElement[]>} childrenOf
+   *   The full tree's children-by-parent map, from `deriveThemeElementTree`.
+   * @returns {Element} The tree item, not yet attached to the DOM.
+   */
+  function generateTreeItem(themeElement, childrenOf) {
+    const children = childrenOf.get(themeElement) ?? [];
+
+    const item = document.createElement('div');
+    item.classList.add(CLASS_NAMES.branchedItem);
+
+    const row = document.createElement('div');
+    row.classList.add(CLASS_NAMES.branchedItemRow);
+
+    let disclosure = null;
+    let childrenContainer = null;
+
+    if (children.length > 0) {
+      disclosure = document.createElement('button');
+      disclosure.type = 'button';
+      // The icon font's glyph renders via its own `:before` rule keyed on
+      // `iconNavigateNext`, directly on this button — no separate icon
+      // element needed, matching how e.g. generateSliderButton's own
+      // icon class works.
+      disclosure.classList.add(CLASS_NAMES.branchedItemDisclosure, CLASS_NAMES.iconNavigateNext);
+      disclosure.setAttribute('aria-label', strings.toggleExpandCollapse);
+
+      childrenContainer = document.createElement('div');
+      childrenContainer.classList.add(CLASS_NAMES.branchedItemChildren);
+      children.forEach((child) => childrenContainer.appendChild(generateTreeItem(child, childrenOf)));
+
+      /**
+       * Applies a collapsed/expanded state to this node's own DOM
+       * (children container + disclosure button), without touching
+       * `collapsedById` — used both by the click handler (which also
+       * writes to `collapsedById`) and at build time to apply whatever
+       * state was already remembered from a previous rebuild.
+       *
+       * @param {boolean} collapsed
+       * @returns {void}
+       */
+      const applyCollapsed = (collapsed) => {
+        item.classList.toggle(CLASS_NAMES.branchedItemCollapsed, collapsed);
+        disclosure.setAttribute('aria-expanded', String(!collapsed));
+      };
+
+      disclosure.addEventListener('click', () => {
+        const collapsed = !collapsedById.get(themeElement.id);
+        collapsedById.set(themeElement.id, collapsed);
+        applyCollapsed(collapsed);
+      });
+
+      applyCollapsed(collapsedById.get(themeElement.id) ?? false);
+    }
+
+    const { activation, visibility, applyVisible } = buildRowControls(themeElement, {
+      initialSelected: overlay?.isThemeElementSelected(themeElement) ?? false,
+      initialVisible: overlay?.isThemeElementVisible(themeElement) ?? true,
+      onVisibilityToggled: (visible) => cascadeVisibilityToDescendants(themeElement, visible, childrenOf),
+    });
+
+    themeElement.treeRow = {
+      setActivated: activation.setChecked,
+      setVisible: applyVisible,
+      remove: () => item.remove(),
+    };
+
+    if (disclosure) row.appendChild(disclosure);
+    row.append(activation.wrapper, visibility.wrapper);
+    item.appendChild(row);
+    if (childrenContainer) item.appendChild(childrenContainer);
+
+    return item;
+  }
+
+  /**
+   * Builds the Items tab's Listed/Branched sub-view switcher — two
+   * buttons directly under the tab title, above both sub-views' content.
+   *
+   * @returns {Element} The switcher, not yet attached to the DOM.
+   */
+  function generateItemsSubViewSwitcher() {
+    const switcher = document.createElement('div');
+    switcher.classList.add(CLASS_NAMES.itemsSubViewSwitcher);
+
+    [
+      { id: 'listed', label: strings.subViewListed },
+      { id: 'branched', label: strings.subViewBranched },
+    ].forEach(({ id, label }) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.classList.add(CLASS_NAMES.itemsSubViewButton);
+      button.setAttribute('data-subview', id);
+      button.textContent = label;
+      button.addEventListener('click', () => setItemsSubView(id));
+      switcher.appendChild(button);
+    });
+
+    return switcher;
+  }
+
+  /**
+   * Persists and applies a new Items sub-view choice — the click-driven
+   * entry point (always called well after the Items tab is live, so it
+   * operates on `panelRoot`, unlike `generateItemsTab`'s own initial
+   * application — see `applyItemsSubView`'s doc comment).
+   *
+   * @param {'listed'|'branched'} subview
+   * @returns {void}
+   */
+  function setItemsSubView(subview) {
+    storage.set(STORAGE_KEYS.itemsSubView, subview);
+    applyItemsSubView(subview, panelRoot);
+  }
+
+  /**
+   * Shows the chosen sub-view's container and hides the other within
+   * `root`, updates the switcher buttons' active state, and — switching
+   * TO Branched — builds/rebuilds it if it's never been built yet or has
+   * gone stale since it was last shown (see `scheduleBranchedRefresh`).
+   *
+   * @param {'listed'|'branched'} subview
+   * @param {Element} root Subtree to query the two containers and the
+   *   switcher within. Always `panelRoot` except for one call, inside
+   *   `generateItemsTab` itself, which passes the tab's own not-yet-
+   *   attached `layer` — `panelRoot.querySelector` wouldn't find anything
+   *   not yet attached to it, but `querySelector` on any detached subtree
+   *   (attached or not) works fine, so an explicit root sidesteps that
+   *   ordering problem without duplicating this function's logic.
+   * @returns {void}
+   */
+  function applyItemsSubView(subview, root) {
+    const listedEl = root.querySelector(`.${CLASS_NAMES.listElementContent}`);
+    const branchedEl = root.querySelector(`.${CLASS_NAMES.branchedElementContent}`);
+    const switcher = root.querySelector(`.${CLASS_NAMES.itemsSubViewSwitcher}`);
+
+    listedEl?.classList.toggle(CLASS_NAMES.tabActive, subview === 'listed');
+    branchedEl?.classList.toggle(CLASS_NAMES.tabActive, subview === 'branched');
+    switcher?.querySelectorAll(`.${CLASS_NAMES.itemsSubViewButton}`).forEach((button) => {
+      button.classList.toggle(CLASS_NAMES.tabActive, button.getAttribute('data-subview') === subview);
+    });
+
+    if (subview === 'branched' && (branchedViewDirty || !branchedViewBuilt)) {
+      rebuildBranchedView(branchedEl);
+    }
+  }
+
+  /**
+   * Rebuilds the Branched sub-view's entire tree from scratch, using the
+   * current `themeElements`/DOM ancestry (via `deriveThemeElementTree` —
+   * see that function's own doc comment for why a full rebuild, rather
+   * than incremental patching, is the right call here). Collapsed/
+   * expanded state survives the rebuild via `collapsedById`, read fresh
+   * by each `generateTreeItem` call as it's (re)built; discarding the old
+   * row DOM is safe since both `listRow` and `treeRow` are independent
+   * slots (nothing outside the replaced subtree references the old rows).
+   *
+   * @param {Element|null} [branchedEl] The Branched container to rebuild
+   *   into. Defaults to looking it up via `panelRoot` — every caller
+   *   except `applyItemsSubView` (which already has it in hand from its
+   *   own, possibly-not-yet-`panelRoot`-attached `root`) relies on this
+   *   default.
+   * @returns {void}
+   */
+  function rebuildBranchedView(branchedEl = panelRoot?.querySelector(`.${CLASS_NAMES.branchedElementContent}`)) {
+    if (!branchedEl) return;
+
+    branchedEl.innerHTML = '';
+    const { roots, childrenOf } = deriveThemeElementTree();
+    roots.forEach((themeElement) => branchedEl.appendChild(generateTreeItem(themeElement, childrenOf)));
+
+    branchedViewBuilt = true;
+    branchedViewDirty = false;
+  }
+
+  /**
+   * Is the Branched sub-view currently the one showing? Read by
+   * `scheduleBranchedRefresh` to decide whether to coalesce an immediate
+   * rebuild or just flag staleness for later.
+   *
+   * @returns {boolean}
+   */
+  function isBranchedSubViewActive() {
+    return panelRoot?.querySelector(`.${CLASS_NAMES.branchedElementContent}`)?.classList.contains(CLASS_NAMES.tabActive) ?? false;
+  }
+
+  /**
+   * Flags the Branched sub-view as needing a rebuild, and — only if it's
+   * currently the active sub-view — coalesces that rebuild via a
+   * microtask rather than running it synchronously. This is a correctness
+   * requirement, not just an efficiency one: `index.js`'s
+   * `reconcileDynamicContent` calls this panel's own `addThemeElement`/
+   * `removeThemeElement` synchronously, in a batch, and for removal
+   * specifically calls this panel's `removeThemeElement` *before*
+   * `overlayLayer.js`'s own `removeThemeElement` actually splices the
+   * element out of the shared `themeElements` array — rebuilding
+   * synchronously from in here would read a momentarily-stale array
+   * mid-batch. Scheduling via `Promise.resolve().then(...)` guarantees
+   * this only actually runs after the full synchronous batch (every
+   * add/remove call in that reconciliation pass) has settled, by which
+   * point `themeElements` is final. If Branched isn't currently active,
+   * no rebuild is scheduled at all — it happens lazily, once, the next
+   * time `applyItemsSubView` switches to it.
+   *
+   * @returns {void}
+   */
+  function scheduleBranchedRefresh() {
+    branchedViewDirty = true;
+    if (!isBranchedSubViewActive() || branchedRefreshScheduled) return;
+    branchedRefreshScheduled = true;
+    Promise.resolve().then(() => {
+      branchedRefreshScheduled = false;
+      if (branchedViewDirty) rebuildBranchedView();
+    });
   }
 
   /**
@@ -672,7 +1083,7 @@ export function createControllerPanel(options = {}) {
         generateActiveElementLayer(),
         generateTabsNavigation(),
         generateSelectedElementLayer(),
-        generateListTab(),
+        generateItemsTab(),
         generateFiltersTab(),
       );
     } else {
@@ -1078,7 +1489,7 @@ export function createControllerPanel(options = {}) {
         generateActiveElementLayer(),
         generateTabsNavigation(),
         generateSelectedElementLayer(),
-        generateListTab(),
+        generateItemsTab(),
         generateFiltersTab(),
       );
       updateActiveElement();
@@ -1098,19 +1509,30 @@ export function createControllerPanel(options = {}) {
       const filtersContent = panelRoot.querySelector(`#${IDS.controllerElementFilters} .${CLASS_NAMES.filtersElementContent}`);
       if (filtersContent) buildFilterGroupRow(filtersContent, themeElement.objectType, [themeElement]);
     }
+
+    // The Listed row above was added incrementally; the Branched
+    // sub-view's tree instead gets rebuilt wholesale — see
+    // `scheduleBranchedRefresh`'s own doc comment for why (timing
+    // relative to `overlayLayer.js`'s own add/remove, and why a full
+    // rebuild is the right call for a tree rather than incremental
+    // patching).
+    scheduleBranchedRefresh();
   }
 
   /**
    * Reverses `addThemeElement`'s incremental path — call BEFORE
    * `overlayLayer.js`'s own `removeThemeElement` for the same
-   * `themeElement`, while `themeElement.listRow`/`instanceLayer` are still
-   * intact (overlay's removal is what nulls them). Resets the Active/
-   * Selected panels first if either was pointing at `themeElement` — since
-   * overlay's `removeThemeElement` also deselects via `setChecked`, but
-   * hover (`activeThemeElement`) has no overlay-side equivalent to check,
-   * this identity check is this panel's own responsibility regardless.
-   * Removes the element's List row, and either updates or removes its
-   * Filters group (removed entirely once the group's last member is gone).
+   * `themeElement`, while `themeElement.listRow`/`treeRow`/`instanceLayer`
+   * are still intact (overlay's removal is what nulls them). Resets the
+   * Active/Selected panels first if either was pointing at `themeElement`
+   * — since overlay's `removeThemeElement` also deselects via
+   * `setChecked`, but hover (`activeThemeElement`) has no overlay-side
+   * equivalent to check, this identity check is this panel's own
+   * responsibility regardless. Removes the element's Listed row and
+   * either updates or removes its Filters group (removed entirely once
+   * the group's last member is gone); schedules a Branched sub-view
+   * refresh (see `scheduleBranchedRefresh`) rather than removing a
+   * Branched row directly.
    *
    * Reverting to the empty-state placeholder if this removes the very
    * last theme element is a plausible nice-to-have, deliberately not
@@ -1138,6 +1560,16 @@ export function createControllerPanel(options = {}) {
         updateFilterGroupLabel(themeElement.objectType);
       }
     }
+
+    // Only the Listed row's own DOM needs explicit removal above (via
+    // `listRow.remove()`) — the Branched sub-view's row for this element
+    // (if any) disappears for free the next time it's rebuilt, since a
+    // removed element is no longer in `themeElements` by then. Also drops
+    // any remembered collapsed/expanded state for this element, so a
+    // long-running, AJAX-heavy page doesn't leak `collapsedById` entries
+    // for elements that no longer exist.
+    collapsedById.delete(themeElement.id);
+    scheduleBranchedRefresh();
   }
 
   /**

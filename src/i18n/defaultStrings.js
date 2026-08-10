@@ -19,6 +19,15 @@ export const defaultStrings = {
   noSelectedElement: 'No selected element.',
   tabSelected: 'Selected',
   tabList: 'List',
+  // Rendered label for the tab formerly labeled `tabList` — a separate
+  // key rather than repurposing `tabList` itself, since `tabList` is a
+  // public override point consumers (the Drupal module wrapper, the
+  // Chrome extension) may already translate; leaving it in place avoids
+  // silently changing what an existing override targets.
+  tabItems: 'Items',
+  subViewListed: 'Listed',
+  subViewBranched: 'Branched',
+  toggleExpandCollapse: 'Expand/collapse',
   tabFilters: 'Filters',
   allElements: 'All Elements',
   noDebugDataTitle: 'No Drupal debug data found',

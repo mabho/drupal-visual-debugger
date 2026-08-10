@@ -274,6 +274,18 @@
       background-color: var(--#{variables.$prefix}list-element--background-color);
       padding: var(--#{variables.$prefix}list-element--padding);
 
+      // Items tab's Listed/Branched sub-view switcher shows/hides this
+      // and `.branched__content` by toggling `active` — `:not(.active)`
+      // here deliberately outranks the unconditional `display: flex`
+      // just below by specificity (a class + a pseudo-class vs. a bare
+      // class), rather than relying on `.nav-target`'s same-specificity
+      // `display: none` winning a source-order tie it doesn't actually
+      // win (see controllerPanel.js's `generateItemsTab` for the bug this
+      // replaced).
+      &__content:not(.active) {
+        display: none;
+      }
+
       &__content {
         display: flex;
         flex-direction: var(--#{variables.$prefix}list-element--content--flex-direction);
@@ -330,6 +342,98 @@
           margin-left: var(--#{variables.$prefix}list-element--list-item--visibility--margin-left);
           flex: 0 0 28px;
           display: flex;
+        }
+      }
+    }
+
+    // Items tab: Listed/Branched sub-view switcher.
+    .items-subview-switcher {
+      display: flex;
+      gap: var(--#{variables.$prefix}items-subview-switcher--gap);
+      margin-bottom: var(--#{variables.$prefix}items-subview-switcher--margin-bottom);
+
+      &__button {
+        background-color: var(--#{variables.$prefix}items-subview-button--background-color);
+        border: 0;
+        border-radius: var(--#{variables.$prefix}controller--border-radius);
+        cursor: var(--#{variables.$prefix}items-subview-button--cursor);
+        font-family: inherit;
+        font-size: inherit;
+        padding: var(--#{variables.$prefix}items-subview-button--padding);
+        transition: background-color var(--#{variables.$prefix}transition-speed), color var(--#{variables.$prefix}transition-speed);
+
+        &.active {
+          background-color: var(--#{variables.$prefix}items-subview-button--background-color--active);
+          color: var(--#{variables.$prefix}items-subview-button--color--active);
+        }
+      }
+    }
+
+    // Items tab: Branched (tree) sub-view.
+    .branched {
+      background-color: var(--#{variables.$prefix}branched-element--background-color);
+      padding: var(--#{variables.$prefix}branched-element--padding);
+
+      // See the matching `.list__content:not(.active)` rule above for why
+      // this exists instead of reusing `.nav-target`.
+      &__content:not(.active) {
+        display: none;
+      }
+
+      &__content {
+        display: flex;
+        flex-direction: column;
+        gap: var(--#{variables.$prefix}branched-element--content--gap);
+      }
+
+      &-item {
+        &__row {
+          align-items: center;
+          column-gap: var(--#{variables.$prefix}branched-item--row--gap);
+          display: flex;
+
+          // Reuses the List tab's own activation/visibility switch
+          // styling verbatim (see buildRowControls in controllerPanel.js)
+          // — only this row wrapper and the disclosure/children below are
+          // new, tree-specific markup.
+          .list-item__activation {
+            flex: 1;
+          }
+        }
+
+        // The glyph itself (Icomoon's `icon-navigate-next` chevron) comes
+        // from `_icons.scss`'s shared `[class^="icon-"]` rule plus the
+        // vendored font's own `:before` content — this just handles the
+        // disclosure button's box/cursor/rotation.
+        &__disclosure {
+          background: transparent;
+          border: 0;
+          cursor: var(--#{variables.$prefix}branched-item--disclosure--cursor);
+          flex: 0 0 var(--#{variables.$prefix}branched-item--disclosure--size);
+          line-height: 1;
+          padding: 0;
+          text-align: center;
+          transform: rotate(90deg);
+          transition: var(--#{variables.$prefix}branched-item--disclosure--transition);
+        }
+
+        // Collapsed: children hidden, disclosure points right instead of down.
+        &--collapsed {
+          > .branched-item__children {
+            display: none;
+          }
+
+          > .branched-item__row .branched-item__disclosure {
+            transform: rotate(0deg);
+          }
+        }
+
+        &__children {
+          display: flex;
+          flex-direction: column;
+          gap: var(--#{variables.$prefix}branched-item--children--gap);
+          margin-top: var(--#{variables.$prefix}branched-item--children--margin-top);
+          padding-left: var(--#{variables.$prefix}branched-item--children--padding-left);
         }
       }
     }

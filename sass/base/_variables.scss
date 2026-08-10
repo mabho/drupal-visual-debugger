@@ -415,6 +415,27 @@ $color--shadow: $color--gray;
   --#{$prefix}list-element--list-item--visibility--cursor: pointer;
   --#{$prefix}list-element--list-item--visibility--margin-left: 0;
 
+  // Items tab: Listed/Branched sub-view switcher.
+  --#{$prefix}items-subview-switcher--gap: calc(var(--#{$prefix}controller--gutter) * .25);
+  --#{$prefix}items-subview-switcher--margin-bottom: calc(var(--#{$prefix}controller--gutter) * .5);
+  --#{$prefix}items-subview-button--background-color: var(--#{$prefix}color--gray-20);
+  --#{$prefix}items-subview-button--background-color--active: var(--#{$prefix}color--white);
+  --#{$prefix}items-subview-button--color--active: var(--#{$prefix}color--gray-90);
+  --#{$prefix}items-subview-button--padding: calc(var(--#{$prefix}controller--gutter) * .2) calc(var(--#{$prefix}controller--gutter) * .5);
+  --#{$prefix}items-subview-button--cursor: pointer;
+
+  // Items tab: Branched (tree) sub-view.
+  --#{$prefix}branched-element--background-color: var(--#{$prefix}list-element--background-color);
+  --#{$prefix}branched-element--padding: var(--#{$prefix}controller--gutter);
+  --#{$prefix}branched-element--content--gap: calc(var(--#{$prefix}controller--gutter) * .25);
+  --#{$prefix}branched-item--row--gap: calc(var(--#{$prefix}controller--gutter) * .25);
+  --#{$prefix}branched-item--children--gap: calc(var(--#{$prefix}controller--gutter) * .25);
+  --#{$prefix}branched-item--children--padding-left: var(--#{$prefix}controller--gutter);
+  --#{$prefix}branched-item--children--margin-top: calc(var(--#{$prefix}controller--gutter) * .25);
+  --#{$prefix}branched-item--disclosure--size: 1.25rem;
+  --#{$prefix}branched-item--disclosure--cursor: pointer;
+  --#{$prefix}branched-item--disclosure--transition: transform var(--#{$prefix}transition-speed);
+
   // Filters.
   --#{$prefix}icon--font-size--x-small: calc(var(--#{$prefix}icon--font-size) * .75);
   --#{$prefix}filters-element--background-color: var(--#{$prefix}color--gray-10);

@@ -13,6 +13,17 @@
  *   object (one per distinct sticky ancestor, since many theme elements
  *   commonly share one) used to flip this element's positioning strategy
  *   live as it stuck/unsticks, and to find/detach it on removal.
+ * @property {{setActivated: (checked: boolean) => void, setVisible: (visible: boolean) => void, remove: () => void}|null} listRow
+ *   Populated by the controller panel's `generateListItem` (Items tab,
+ *   Listed sub-view) — lets `overlayLayer.js` (selection/visibility
+ *   changes) and the Filters tab (batch visibility) sync that row's
+ *   switches without going through synthetic DOM events.
+ * @property {{setActivated: (checked: boolean) => void, setVisible: (visible: boolean) => void, remove: () => void}|null} treeRow
+ *   Same contract as `listRow`, populated by `generateTreeItem` (Items
+ *   tab, Branched sub-view) instead — a *separate* slot, deliberately not
+ *   shared with `listRow`, since both sub-views' rows for the same
+ *   element can exist independently and both need live updates; see
+ *   `overlayLayer.js`'s `setChecked`/`setVisible`, which notify both.
  */
 
 /**
@@ -32,5 +43,7 @@ export function createEmptyThemeElement() {
     dataNode: null,
     instanceLayer: null,
     stickyGroup: null,
+    listRow: null,
+    treeRow: null,
   };
 }
