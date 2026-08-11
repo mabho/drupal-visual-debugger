@@ -1,9 +1,9 @@
 @font-face {
   font-family: 'visual-debugger-icons';
   src:
-    url('fonts/visual-debugger-icons.ttf?y3g3j') format('truetype'),
-    url('fonts/visual-debugger-icons.woff?y3g3j') format('woff'),
-    url('fonts/visual-debugger-icons.svg?y3g3j#visual-debugger-icons') format('svg');
+    url('fonts/visual-debugger-icons.ttf?59d5qk') format('truetype'),
+    url('fonts/visual-debugger-icons.woff?59d5qk') format('woff'),
+    url('fonts/visual-debugger-icons.svg?59d5qk#visual-debugger-icons') format('svg');
   font-weight: normal;
   font-style: normal;
   font-display: block;
@@ -24,6 +24,18 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+.icon-refresh-cw:before {
+  content: "\e907";
+}
+.icon-minus:before {
+  content: "\e909";
+}
+.icon-navigate-next:before {
+  content: "\e908";
+}
+.icon-copy:before {
+  content: "\e900";
+}
 .icon-slide-resize:before {
   content: "\e904";
 }
@@ -32,12 +44,6 @@
 }
 .icon-selected-true:before {
   content: "\e902";
-}
-.icon-navigate-next:before {
-  content: "\e908";
-}
-.icon-copy:before {
-  content: "\e900";
 }
 .icon-eye:before {
   content: "\e9ce";

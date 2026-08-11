@@ -3,9 +3,9 @@
 @font-face {
   font-family: '#{$icomoon-font-family}';
   src:
-    url('#{$icomoon-font-path}/#{$icomoon-font-family}.ttf?y3g3j') format('truetype'),
-    url('#{$icomoon-font-path}/#{$icomoon-font-family}.woff?y3g3j') format('woff'),
-    url('#{$icomoon-font-path}/#{$icomoon-font-family}.svg?y3g3j##{$icomoon-font-family}') format('svg');
+    url('#{$icomoon-font-path}/#{$icomoon-font-family}.ttf?59d5qk') format('truetype'),
+    url('#{$icomoon-font-path}/#{$icomoon-font-family}.woff?59d5qk') format('woff'),
+    url('#{$icomoon-font-path}/#{$icomoon-font-family}.svg?59d5qk##{$icomoon-font-family}') format('svg');
   font-weight: normal;
   font-style: normal;
   font-display: block;
@@ -26,6 +26,26 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+.icon-refresh-cw {
+  &:before {
+    content: $icon-refresh-cw; 
+  }
+}
+.icon-minus {
+  &:before {
+    content: $icon-minus; 
+  }
+}
+.icon-navigate-next {
+  &:before {
+    content: $icon-navigate-next; 
+  }
+}
+.icon-copy {
+  &:before {
+    content: $icon-copy; 
+  }
+}
 .icon-slide-resize {
   &:before {
     content: $icon-slide-resize; 
@@ -39,16 +59,6 @@
 .icon-selected-true {
   &:before {
     content: $icon-selected-true; 
-  }
-}
-.icon-navigate-next {
-  &:before {
-    content: $icon-navigate-next; 
-  }
-}
-.icon-copy {
-  &:before {
-    content: $icon-copy; 
   }
 }
 .icon-eye {
