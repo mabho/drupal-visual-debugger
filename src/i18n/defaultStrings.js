@@ -7,7 +7,6 @@
 export const defaultStrings = {
   copyToClipboard: 'Copy to clipboard',
   debuggerActivated: 'Debugger activated',
-  selectedElement: 'Selected Element',
   basicInfo: 'Object Type',
   themeSuggestions: 'Theme Suggestions',
   clickDragButton: 'Click and drag to resize',

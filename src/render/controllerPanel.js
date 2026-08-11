@@ -290,9 +290,6 @@ export function createControllerPanel(options = {}) {
     layer.id = IDS.controllerElementList;
     layer.classList.add(CLASS_NAMES.listElement, CLASS_NAMES.navTarget);
 
-    const title = document.createElement('h3');
-    title.textContent = strings.tabItems;
-
     const switcher = generateItemsSubViewSwitcher();
 
     // Deliberately NOT `CLASS_NAMES.navTarget` on either sub-view
@@ -312,7 +309,7 @@ export function createControllerPanel(options = {}) {
     const branchedContainer = document.createElement('div');
     branchedContainer.classList.add(CLASS_NAMES.branchedElementContent);
 
-    layer.append(title, switcher, listedContainer, branchedContainer);
+    layer.append(switcher, listedContainer, branchedContainer);
 
     // Passes `layer` explicitly (not yet attached to `panelRoot`) rather
     // than relying on `applyItemsSubView`'s `panelRoot`-based default —
@@ -1067,7 +1064,6 @@ export function createControllerPanel(options = {}) {
     const title = document.createElement('h3');
     layer.id = IDS.controllerElementSelected;
     layer.classList.add(CLASS_NAMES.selectedElement, CLASS_NAMES.navTarget);
-    title.textContent = strings.selectedElement;
 
     const infoWrapper = document.createElement('div');
     const info = document.createElement('div');
@@ -1096,7 +1092,7 @@ export function createControllerPanel(options = {}) {
     filePathTitle.textContent = strings.templateFilePath;
     filePathWrapper.append(filePathTitle, filePath);
 
-    layer.append(title, infoWrapper, suggestionsWrapper, filePathWrapper);
+    layer.append(infoWrapper, suggestionsWrapper, filePathWrapper);
     return layer;
   }
 
