@@ -493,7 +493,7 @@ export function createControllerPanel(options = {}) {
       // already-visible element is a no-op.
       setActivated: (checked) => {
         activation.setChecked(checked);
-        if (checked) item.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        if (checked) scrollRowIntoView(item);
       },
       setVisible: applyVisible,
       remove: () => item.remove(),
@@ -529,6 +529,24 @@ export function createControllerPanel(options = {}) {
       ancestor.querySelector(`:scope > .${CLASS_NAMES.branchedItemRow} > .${CLASS_NAMES.branchedItemDisclosure}`)?.click();
       ancestor = item.parentElement?.closest(`.${CLASS_NAMES.branchedItem}.${CLASS_NAMES.branchedItemCollapsed}`);
     }
+  }
+
+  /**
+   * Scrolls a List/Branched row into view. Sets `scroll-margin-top` to
+   * the sticky tab nav's current height first — otherwise `scrollIntoView`
+   * can land the row's top edge exactly under `.tabbed-navigation`
+   * (`position: sticky; top: 0`), technically in the scrollable area but
+   * visually hidden behind it. Measured fresh each call rather than
+   * cached, since it only runs on selection (not a hot path) and stays
+   * correct if the nav's height ever changes.
+   *
+   * @param {Element} item The row to scroll into view.
+   * @returns {void}
+   */
+  function scrollRowIntoView(item) {
+    const nav = panelRoot?.querySelector(`.${CLASS_NAMES.tabsNavigation}`);
+    item.style.scrollMarginTop = `${nav?.getBoundingClientRect().height ?? 0}px`;
+    item.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
 
   /**
@@ -713,7 +731,7 @@ export function createControllerPanel(options = {}) {
         activation.setChecked(checked);
         if (checked) {
           expandCollapsedAncestors(item);
-          item.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+          scrollRowIntoView(item);
         }
       },
       setVisible: applyVisible,
