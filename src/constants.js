@@ -81,6 +81,11 @@ export const CLASS_NAMES = {
   // CSS rather than swapped for a different glyph to indicate expanded
   // vs collapsed.
   iconNavigateNext: 'icon-navigate-next',
+  // Icomoon's "minus" glyph — a static, non-interactive placeholder for
+  // childless Branched-sub-view rows, reserving the same icon-width
+  // column a real disclosure triangle would occupy so leaf rows' labels/
+  // switches stay aligned with sibling rows that do have children.
+  iconMinus: 'icon-minus',
   clickDragButton: 'click-drag-button',
 
   // "No debug data" placeholder (shown instead of the tab bar/panels when

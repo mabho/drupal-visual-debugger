@@ -486,13 +486,49 @@ export function createControllerPanel(options = {}) {
     });
 
     themeElement.listRow = {
-      setActivated: activation.setChecked,
+      // Scrolls this row into view whenever it becomes selected from
+      // *anywhere* (a real click on the overlay, the Filters tab, the
+      // Branched sub-view) — not just a click on this row itself, which
+      // is already in view. Harmless in that case too: scrolling an
+      // already-visible element is a no-op.
+      setActivated: (checked) => {
+        activation.setChecked(checked);
+        if (checked) item.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      },
       setVisible: applyVisible,
       remove: () => item.remove(),
     };
 
     item.append(activation.wrapper, visibility.wrapper);
     return item;
+  }
+
+  /**
+   * Expands every currently-collapsed ancestor of `item` (a Branched-
+   * sub-view row) — called before scrolling a newly-selected row into
+   * view (see `generateTreeItem`'s `treeRow.setActivated`), since a row
+   * nested inside a collapsed parent/grandparent is `display:none` (the
+   * `--collapsed` SCSS rule), and `scrollIntoView` silently does nothing
+   * for a non-rendered element.
+   *
+   * Reuses each ancestor's own disclosure button's real click handling
+   * (via a synthetic `.click()`) rather than duplicating its
+   * `collapsedById`/`aria-expanded` bookkeeping here. Safe to do —
+   * unlike the overlay ↔ list selection toggle, which deliberately
+   * avoids synthetic click-forwarding to prevent a bounce-back loop —
+   * since expanding is one-directional and idempotent: nothing the
+   * disclosure's click handler does calls back into this function.
+   *
+   * @param {Element} item A `.branched-item` row, possibly nested inside
+   *   one or more collapsed ancestors.
+   * @returns {void}
+   */
+  function expandCollapsedAncestors(item) {
+    let ancestor = item.parentElement?.closest(`.${CLASS_NAMES.branchedItem}.${CLASS_NAMES.branchedItemCollapsed}`);
+    while (ancestor) {
+      ancestor.querySelector(`:scope > .${CLASS_NAMES.branchedItemRow} > .${CLASS_NAMES.branchedItemDisclosure}`)?.click();
+      ancestor = item.parentElement?.closest(`.${CLASS_NAMES.branchedItem}.${CLASS_NAMES.branchedItemCollapsed}`);
+    }
   }
 
   /**
@@ -577,14 +613,18 @@ export function createControllerPanel(options = {}) {
   /**
    * Builds one Branched-sub-view row for `themeElement`: the same
    * activation/visibility switches as `generateListItem` (via
-   * `buildRowControls`), plus — only if this element has children — a
-   * disclosure button and a nested children container holding
-   * recursively-built child rows. Indentation is purely structural: each
-   * nesting level's `.branched-item__children` container gets its own
-   * `padding-left` in SCSS, so depth-based indentation compounds
-   * naturally with no JS math needed. Registers `themeElement.treeRow` —
-   * a *separate* slot from `listRow` (see themeElement.js's doc comment
-   * for why both must exist independently).
+   * `buildRowControls`), plus a disclosure icon and — only if this
+   * element has children — a nested children container holding
+   * recursively-built child rows. A childless element still gets an icon
+   * in that same slot (a static, non-interactive "minus" glyph) rather
+   * than nothing at all — leaving the slot empty would shift that row's
+   * label/switches left relative to sibling rows that DO have a
+   * disclosure triangle, misaligning the whole tree. Indentation is
+   * purely structural: each nesting level's `.branched-item__children`
+   * container gets its own `padding-left` in SCSS, so depth-based
+   * indentation compounds naturally with no JS math needed. Registers
+   * `themeElement.treeRow` — a *separate* slot from `listRow` (see
+   * themeElement.js's doc comment for why both must exist independently).
    *
    * @param {import('../model/themeElement.js').ThemeElement} themeElement
    *   The theme element this row represents.
@@ -601,7 +641,7 @@ export function createControllerPanel(options = {}) {
     const row = document.createElement('div');
     row.classList.add(CLASS_NAMES.branchedItemRow);
 
-    let disclosure = null;
+    let disclosure;
     let childrenContainer = null;
 
     if (children.length > 0) {
@@ -640,6 +680,19 @@ export function createControllerPanel(options = {}) {
       });
 
       applyCollapsed(collapsedById.get(themeElement.id) ?? false);
+    } else {
+      // Not a real disclosure control — a leaf has nothing to expand, but
+      // without SOME element reserving the same icon-width column, a
+      // leaf's row would shift left relative to sibling rows that DO have
+      // a disclosure triangle, misaligning every row's label/switches.
+      // Deliberately a <span>, not a <button>: it isn't interactive, so
+      // it shouldn't look or behave like a clickable control (see the
+      // matching `button.branched-item__disclosure` scoping in SCSS,
+      // which keeps `cursor: pointer` and the rotation transition off
+      // this element).
+      disclosure = document.createElement('span');
+      disclosure.classList.add(CLASS_NAMES.branchedItemDisclosure, CLASS_NAMES.iconMinus);
+      disclosure.setAttribute('aria-hidden', 'true');
     }
 
     const { activation, visibility, applyVisible } = buildRowControls(themeElement, {
@@ -649,13 +702,25 @@ export function createControllerPanel(options = {}) {
     });
 
     themeElement.treeRow = {
-      setActivated: activation.setChecked,
+      // Same "scroll into view whenever selected from anywhere" behavior
+      // as `generateListItem`'s `listRow`, plus expanding any collapsed
+      // ancestor first — a row nested inside a collapsed parent is
+      // `display:none` (see the `--collapsed` SCSS rule), and
+      // `scrollIntoView` silently does nothing for a non-rendered
+      // element, so without this a selection arriving via a collapsed
+      // branch would select the row but never actually reveal it.
+      setActivated: (checked) => {
+        activation.setChecked(checked);
+        if (checked) {
+          expandCollapsedAncestors(item);
+          item.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+      },
       setVisible: applyVisible,
       remove: () => item.remove(),
     };
 
-    if (disclosure) row.appendChild(disclosure);
-    row.append(activation.wrapper, visibility.wrapper);
+    row.append(disclosure, activation.wrapper, visibility.wrapper);
     item.appendChild(row);
     if (childrenContainer) item.appendChild(childrenContainer);
 

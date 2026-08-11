@@ -401,20 +401,28 @@
           }
         }
 
-        // The glyph itself (Icomoon's `icon-navigate-next` chevron) comes
-        // from `_icons.scss`'s shared `[class^="icon-"]` rule plus the
-        // vendored font's own `:before` content — this just handles the
-        // disclosure button's box/cursor/rotation.
+        // The glyph itself (Icomoon's `icon-navigate-next`/`icon-minus`)
+        // comes from `_icons.scss`'s shared `[class^="icon-"]` rule plus
+        // the vendored font's own `:before` content — this just handles
+        // the disclosure slot's box/alignment (shared by the real
+        // `<button>` and the childless-row `<span>` placeholder alike, so
+        // both reserve the exact same column width) plus the interactive
+        // button's own cursor/rotation (scoped to the `button` tag
+        // specifically, so the inert placeholder `<span>` doesn't
+        // misleadingly look clickable or inherit rotation it never uses).
         &__disclosure {
-          background: transparent;
-          border: 0;
-          cursor: var(--#{variables.$prefix}branched-item--disclosure--cursor);
           flex: 0 0 var(--#{variables.$prefix}branched-item--disclosure--size);
           line-height: 1;
-          padding: 0;
           text-align: center;
-          transform: rotate(90deg);
-          transition: var(--#{variables.$prefix}branched-item--disclosure--transition);
+
+          &:is(button) {
+            background: transparent;
+            border: 0;
+            cursor: var(--#{variables.$prefix}branched-item--disclosure--cursor);
+            padding: 0;
+            transform: rotate(90deg);
+            transition: var(--#{variables.$prefix}branched-item--disclosure--transition);
+          }
         }
 
         // Collapsed: children hidden, disclosure points right instead of down.
