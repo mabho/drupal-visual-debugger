@@ -309,6 +309,11 @@
           flex-direction: row;
           font-weight: var(--#{variables.$prefix}list-element--list-item--activation--font-weight);
           line-height: inherit;
+          // Flex items default to `min-width: auto` (i.e. never shrink
+          // below their content's natural width) — overriding it here is
+          // what lets the label below actually shrink/ellipsis instead
+          // of pushing `.list-item__visibility` off-screen.
+          min-width: 0;
 
           &[data-vd-visible='false'] {
             opacity: var(--#{variables.$prefix}list-element--list-item--activation--disabled--opacity);
@@ -318,9 +323,13 @@
           label {
             flex-grow: 1;
             line-height: var(--#{variables.$prefix}list-element--list-item--activation--line-height);
+            min-width: var(--#{variables.$prefix}list-element--list-item--activation--label--min-width);
+            overflow: hidden;
             padding: var(--#{variables.$prefix}list-element--list-item--activation--padding);
             position: relative;
+            text-overflow: ellipsis;
             transition: background-color var(--#{variables.$prefix}transition-speed);
+            white-space: nowrap;
           }
 
           &[data-vd-list-item-activated='true'] {
