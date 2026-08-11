@@ -278,7 +278,7 @@ $color--shadow: $color--gray;
   --#{$prefix}controller--h3--border-bottom: solid #{functions.to-rem(2px)} var(--#{$prefix}color--gray-30);
   --#{$prefix}controller--h3--font-size: 1.25rem;
   --#{$prefix}controller--max-width: 50%;
-  --#{$prefix}controller--min-width: #{functions.to-rem(150px)};
+  --#{$prefix}controller--min-width: #{functions.to-rem(300px)};
   --#{$prefix}controller--padding: 0;
   --#{$prefix}controller--position: fixed;
   --#{$prefix}controller--right: calc(var(--#{$prefix}controller--max-width) * -1);
