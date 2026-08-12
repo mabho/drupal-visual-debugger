@@ -136,6 +136,22 @@ export const CLASS_NAMES = {
   // `tabActive` is presence-only with no separate "inactive" class.
   branchedItemCollapsed: 'branched-item--collapsed',
 
+  // Items tab's Grouped sub-view (rows bucketed by objectType). Group
+  // switches reuse `filtersElementItemActivation`/`objectType`/`iconSquare`
+  // verbatim (see buildFilterGroupRow) rather than getting their own
+  // class; the Aggregate switch reuses `listItemActivation` verbatim (see
+  // the "All Elements" switches) — only the structure below is new.
+  groupedElement: 'grouped',
+  groupedElementContent: 'grouped__content',
+  groupedAggregateRow: 'grouped__aggregate',
+  groupedItem: 'grouped-item',
+  groupedItemHeader: 'grouped-item__header',
+  groupedItemDisclosure: 'grouped-item__disclosure',
+  // Presence toggles a group's children container closed; absence means
+  // expanded — same convention as `branchedItemCollapsed`.
+  groupedItemCollapsed: 'grouped-item--collapsed',
+  groupedItemChildren: 'grouped-item__children',
+
   // Filters tab.
   filtersElement: 'filters',
   filtersElementContent: 'filters__content',

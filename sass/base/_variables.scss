@@ -437,6 +437,14 @@ $color--shadow: $color--gray;
   --#{$prefix}branched-item--disclosure--cursor: pointer;
   --#{$prefix}branched-item--disclosure--transition: transform var(--#{$prefix}transition-speed);
 
+  // Items tab: Grouped (bucketed by objectType) sub-view.
+  --#{$prefix}grouped-element--background-color: var(--#{$prefix}list-element--background-color);
+  --#{$prefix}grouped-element--padding: var(--#{$prefix}controller--gutter);
+  --#{$prefix}grouped-element--content--gap: var(--#{$prefix}branched-element--content--gap);
+  --#{$prefix}grouped-aggregate--border-bottom: solid 1px var(--#{$prefix}color--gray-40);
+  --#{$prefix}grouped-aggregate--margin-bottom: var(--#{$prefix}branched-item--children--margin-top);
+  --#{$prefix}grouped-aggregate--padding-bottom: var(--#{$prefix}branched-item--children--margin-top);
+
   // Filters.
   --#{$prefix}icon--font-size--x-small: calc(var(--#{$prefix}icon--font-size) * .75);
   --#{$prefix}filters-element--background-color: var(--#{$prefix}color--gray-10);

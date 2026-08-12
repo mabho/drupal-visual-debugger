@@ -184,12 +184,13 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
     if (checked) checkbox.focus();
     else checkbox.blur();
 
-    // Both sub-views of the Items tab (Listed and Branched) can have a
-    // live row for the same themeElement at once — notify both slots,
-    // not just one, or whichever sub-view isn't currently registered
-    // here silently stops receiving updates.
+    // All three sub-views of the Items tab (Listed, Branched, Grouped)
+    // can have a live row for the same themeElement at once — notify
+    // every slot, not just one, or whichever sub-view isn't currently
+    // registered here silently stops receiving updates.
     themeElement.listRow?.setActivated(checked);
     themeElement.treeRow?.setActivated(checked);
+    themeElement.groupedRow?.setActivated(checked);
 
     if (checked) controllerHooks?.setDefaultThemeElement(themeElement);
     else controllerHooks?.resetDefaultThemeElement();
@@ -222,11 +223,12 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
   function setVisible(themeElement, visible) {
     if (!visible && isChecked(themeElement)) setChecked(themeElement, false);
     themeElement.instanceLayer.setAttribute(LAYER_ATTRIBUTES.visible, String(visible));
-    // See the equivalent comment in `setChecked` — both `listRow` and
-    // `treeRow` need notifying, since either or both may currently have a
-    // live row for this element.
+    // See the equivalent comment in `setChecked` — `listRow`, `treeRow`,
+    // and `groupedRow` all need notifying, since any of them may currently
+    // have a live row for this element.
     themeElement.listRow?.setVisible(visible);
     themeElement.treeRow?.setVisible(visible);
+    themeElement.groupedRow?.setVisible(visible);
   }
 
   /**
@@ -315,8 +317,8 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
    *
    * Callers (see `index.js`'s `reconcileDynamicContent`) must call
    * `controllerPanel`'s equivalent `removeThemeElement` FIRST, while
-   * `themeElement.listRow`/`treeRow`/`instanceLayer` are still intact —
-   * this function nulls all three.
+   * `themeElement.listRow`/`treeRow`/`groupedRow`/`instanceLayer` are
+   * still intact — this function nulls all four.
    *
    * @param {import('../model/themeElement.js').ThemeElement} themeElement
    *   The theme element to stop tracking.
@@ -335,6 +337,7 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
     themeElement.instanceLayer = null;
     themeElement.listRow = null;
     themeElement.treeRow = null;
+    themeElement.groupedRow = null;
   }
 
   /**
@@ -981,6 +984,7 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
       themeElement.instanceLayer = null;
       themeElement.listRow = null;
       themeElement.treeRow = null;
+      themeElement.groupedRow = null;
       themeElement.stickyGroup = null;
     });
   }

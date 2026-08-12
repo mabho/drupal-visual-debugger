@@ -21,9 +21,13 @@
  * @property {{setActivated: (checked: boolean) => void, setVisible: (visible: boolean) => void, remove: () => void}|null} treeRow
  *   Same contract as `listRow`, populated by `generateTreeItem` (Items
  *   tab, Branched sub-view) instead — a *separate* slot, deliberately not
- *   shared with `listRow`, since both sub-views' rows for the same
- *   element can exist independently and both need live updates; see
- *   `overlayLayer.js`'s `setChecked`/`setVisible`, which notify both.
+ *   shared with `listRow`, since more than one sub-view's row for the same
+ *   element can exist at once and each needs independent live updates; see
+ *   `overlayLayer.js`'s `setChecked`/`setVisible`, which notify all three.
+ * @property {{setActivated: (checked: boolean) => void, setVisible: (visible: boolean) => void, remove: () => void}|null} groupedRow
+ *   Same contract again, populated by `generateGroupedItem` (Items tab,
+ *   Grouped sub-view) — a third independent slot, for the same reason
+ *   `treeRow` isn't shared with `listRow`.
  */
 
 /**
@@ -45,5 +49,6 @@ export function createEmptyThemeElement() {
     stickyGroup: null,
     listRow: null,
     treeRow: null,
+    groupedRow: null,
   };
 }

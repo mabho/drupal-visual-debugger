@@ -12,6 +12,27 @@
   margin-bottom: calc(var(--#{variables.$prefix}controller--gutter) * .75);
 }
 
+// Shared by Branched's and Grouped's disclosure controls (`.branched-item__disclosure`/
+// `.grouped-item__disclosure`) — the box/alignment styling is ancestor-independent
+// and freely shareable; kept as placeholders rather than a shared class since each
+// view's own `--collapsed`-scoped rotation-reset override still has to be written
+// once per view regardless (it's inherently scoped to that view's own collapsed
+// marker class).
+%disclosure-box {
+  flex: 0 0 var(--#{variables.$prefix}branched-item--disclosure--size);
+  line-height: 1;
+  text-align: center;
+}
+
+%disclosure-interactive {
+  background: transparent;
+  border: 0;
+  cursor: var(--#{variables.$prefix}branched-item--disclosure--cursor);
+  padding: 0;
+  transform: rotate(90deg);
+  transition: var(--#{variables.$prefix}branched-item--disclosure--transition);
+}
+
 .visual-debugger {
 
   // Controller.
@@ -420,17 +441,10 @@
         // specifically, so the inert placeholder `<span>` doesn't
         // misleadingly look clickable or inherit rotation it never uses).
         &__disclosure {
-          flex: 0 0 var(--#{variables.$prefix}branched-item--disclosure--size);
-          line-height: 1;
-          text-align: center;
+          @extend %disclosure-box;
 
           &:is(button) {
-            background: transparent;
-            border: 0;
-            cursor: var(--#{variables.$prefix}branched-item--disclosure--cursor);
-            padding: 0;
-            transform: rotate(90deg);
-            transition: var(--#{variables.$prefix}branched-item--disclosure--transition);
+            @extend %disclosure-interactive;
           }
         }
 
@@ -441,6 +455,78 @@
           }
 
           > .branched-item__row .branched-item__disclosure {
+            transform: rotate(0deg);
+          }
+        }
+
+        &__children {
+          display: flex;
+          flex-direction: column;
+          gap: var(--#{variables.$prefix}branched-item--children--gap);
+          margin-top: var(--#{variables.$prefix}branched-item--children--margin-top);
+          padding-left: var(--#{variables.$prefix}branched-item--children--padding-left);
+        }
+      }
+    }
+
+    // Items tab: Grouped (bucketed by objectType) sub-view.
+    .grouped {
+      background-color: var(--#{variables.$prefix}grouped-element--background-color);
+      padding: var(--#{variables.$prefix}grouped-element--padding);
+
+      // See the matching `.list__content:not(.active)` rule above for why
+      // this exists instead of reusing `.nav-target`.
+      &__content:not(.active) {
+        display: none;
+      }
+
+      &__content {
+        display: flex;
+        flex-direction: column;
+        gap: var(--#{variables.$prefix}grouped-element--content--gap);
+      }
+
+      // The global "Aggregate" collapse-all/expand-all switch. Its own
+      // switch markup reuses `.list-item__activation` verbatim (see the
+      // "All Elements" switches in controllerPanel.js's
+      // generateListedSubView/generateFiltersTab) — only this row's
+      // separation from the group list below is new.
+      &__aggregate {
+        border-bottom: var(--#{variables.$prefix}grouped-aggregate--border-bottom);
+        margin-bottom: var(--#{variables.$prefix}grouped-aggregate--margin-bottom);
+        padding-bottom: var(--#{variables.$prefix}grouped-aggregate--padding-bottom);
+      }
+
+      &-item {
+        &__header {
+          align-items: center;
+          column-gap: var(--#{variables.$prefix}branched-item--row--gap);
+          display: flex;
+
+          // Reuses the Filters tab's own per-type switch styling verbatim
+          // (see buildFilterGroupRow/generateGroupSection) — only this
+          // header wrapper and the disclosure/children below are new,
+          // Grouped-specific markup.
+          .filters-item__activation {
+            flex: 1;
+          }
+        }
+
+        // Every Grouped disclosure is a real `<button>` — a group only
+        // exists while it has at least one member, so there's no
+        // Branched-style childless-leaf placeholder case to handle here.
+        &__disclosure {
+          @extend %disclosure-box;
+          @extend %disclosure-interactive;
+        }
+
+        // Collapsed: children hidden, disclosure points right instead of down.
+        &--collapsed {
+          > .grouped-item__children {
+            display: none;
+          }
+
+          > .grouped-item__header .grouped-item__disclosure {
             transform: rotate(0deg);
           }
         }

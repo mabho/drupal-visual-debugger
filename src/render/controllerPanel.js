@@ -90,6 +90,26 @@ export function createControllerPanel(options = {}) {
   let branchedViewBuilt = false;
   let branchedViewDirty = false;
   let branchedRefreshScheduled = false;
+  // Items tab's Grouped sub-view state — mirrors Branched's own state
+  // above, plus pieces specific to bucketed groups and the global
+  // Aggregate switch (see rebuildGroupedView/generateGroupSection/
+  // applyAggregateToAllGroups for how each is used). `groupCollapsedByType`
+  // is keyed by `objectType` (not element id — groups are per-type), not
+  // shared with `collapsedById`. `groupSectionsByType` and
+  // `currentGroupTypes` are rebuilt fresh every `rebuildGroupedView` call
+  // (groups are torn down and recreated wholesale each time), but need to
+  // survive the interactions *between* rebuilds — an individual
+  // disclosure toggle or an Aggregate-switch click, neither of which
+  // triggers a full rebuild. `aggregateSwitchControl` is the Aggregate
+  // switch's own `createOnOffSwitch` return value, recreated each rebuild
+  // alongside it.
+  let groupCollapsedByType = new Map();
+  let groupedViewBuilt = false;
+  let groupedViewDirty = false;
+  let groupedRefreshScheduled = false;
+  let groupSectionsByType = new Map();
+  let currentGroupTypes = null;
+  let aggregateSwitchControl = null;
 
   /**
    * The theme element the "Selected Element" panel should currently show:
@@ -278,10 +298,10 @@ export function createControllerPanel(options = {}) {
    * vocabulary, `IDS.controllerElementList`/`CLASS_NAMES.listElement`/
    * etc., is kept exactly as-is on purpose, since existing external CSS
    * and querySelector call sites depend on it; only the rendered label
-   * changed — see defaultStrings.js's `tabItems`): a Listed/Branched
-   * sub-view switcher, the existing flat Listed view (unchanged
-   * behavior, via `generateListedSubView`), and the new Branched tree
-   * view (built lazily — see `applyItemsSubView`).
+   * changed — see defaultStrings.js's `tabItems`): a Listed/Branched/
+   * Grouped sub-view switcher, the existing flat Listed view (unchanged
+   * behavior, via `generateListedSubView`), and the Branched tree/Grouped
+   * bucketed views (both built lazily — see `applyItemsSubView`).
    *
    * @returns {Element} The Items tab panel, not yet attached to the DOM.
    */
@@ -292,24 +312,30 @@ export function createControllerPanel(options = {}) {
 
     const switcher = generateItemsSubViewSwitcher();
 
-    // Deliberately NOT `CLASS_NAMES.navTarget` on either sub-view
-    // container: `.list__content`/`.branched__content` already carry
-    // their own unconditional `display: flex` rule (for their own
+    // Deliberately NOT `CLASS_NAMES.navTarget` on any sub-view container:
+    // `.list__content`/`.branched__content`/`.grouped__content` already
+    // carry their own unconditional `display: flex` rule (for their own
     // internal layout), at the same specificity as `.nav-target`'s
-    // `display: none` — a tie that `.list__content`/`.branched__content`
-    // always won (their rule compiles later in the stylesheet), so the
-    // sub-view that should've been hidden never actually was, regardless
-    // of which had the `active` class. See the dedicated
-    // `.list__content:not(.active)`/`.branched__content:not(.active)`
-    // SCSS rules instead, which unambiguously outrank the plain
-    // `display: flex` rule by specificity rather than relying on source
-    // order.
+    // `display: none` — a tie those rules always won (they compile later
+    // in the stylesheet), so the sub-view that should've been hidden
+    // never actually was, regardless of which had the `active` class. See
+    // the dedicated `:not(.active)` SCSS rules instead, which
+    // unambiguously outrank the plain `display: flex` rule by specificity
+    // rather than relying on source order.
     const listedContainer = generateListedSubView();
 
     const branchedContainer = document.createElement('div');
     branchedContainer.classList.add(CLASS_NAMES.branchedElementContent);
 
-    layer.append(switcher, listedContainer, branchedContainer);
+    // Unlike `branchedContainer` above, actually carries `groupedElement`
+    // (`.grouped`'s background-color/padding) alongside
+    // `groupedElementContent` — `CLASS_NAMES.branchedElement` is declared
+    // but never applied anywhere, leaving its own SCSS rule dead; this
+    // doesn't repeat that omission.
+    const groupedContainer = document.createElement('div');
+    groupedContainer.classList.add(CLASS_NAMES.groupedElement, CLASS_NAMES.groupedElementContent);
+
+    layer.append(switcher, listedContainer, branchedContainer, groupedContainer);
 
     // Passes `layer` explicitly (not yet attached to `panelRoot`) rather
     // than relying on `applyItemsSubView`'s `panelRoot`-based default —
@@ -321,10 +347,12 @@ export function createControllerPanel(options = {}) {
 
   /**
    * Builds the activation ("select/deselect", labeled with the theme hook)
-   * and visibility ("show/hide") switches shared by both Items sub-views'
-   * rows (Listed's `generateListItem` and Branched's `generateTreeItem`),
-   * plus the `applyVisible` sync function each registers as its row's
-   * `listRow.setVisible`/`treeRow.setVisible`. Parameterized on real
+   * and visibility ("show/hide") switches shared by all three Items
+   * sub-views' rows (Listed's `generateListItem`, Branched's
+   * `generateTreeItem`, Grouped's `generateGroupedItem`), plus the
+   * `applyVisible` sync function each registers as its row's
+   * `listRow.setVisible`/`treeRow.setVisible`/`groupedRow.setVisible`.
+   * Parameterized on real
    * current state rather than hardcoding it — a latent bug fixed as part
    * of adding the Branched sub-view: both switches used to hardcode their
    * initial checked/visible state regardless of the element's actual
@@ -743,8 +771,9 @@ export function createControllerPanel(options = {}) {
   }
 
   /**
-   * Builds the Items tab's Listed/Branched sub-view switcher — two
-   * buttons directly under the tab title, above both sub-views' content.
+   * Builds the Items tab's Listed/Branched/Grouped sub-view switcher —
+   * three buttons directly under the tab title, above all three
+   * sub-views' content.
    *
    * @returns {Element} The switcher, not yet attached to the DOM.
    */
@@ -755,6 +784,7 @@ export function createControllerPanel(options = {}) {
     [
       { id: 'listed', label: strings.subViewListed },
       { id: 'branched', label: strings.subViewBranched },
+      { id: 'grouped', label: strings.subViewGrouped },
     ].forEach(({ id, label }) => {
       const button = document.createElement('button');
       button.type = 'button';
@@ -774,7 +804,7 @@ export function createControllerPanel(options = {}) {
    * operates on `panelRoot`, unlike `generateItemsTab`'s own initial
    * application — see `applyItemsSubView`'s doc comment).
    *
-   * @param {'listed'|'branched'} subview
+   * @param {'listed'|'branched'|'grouped'} subview
    * @returns {void}
    */
   function setItemsSubView(subview) {
@@ -788,8 +818,8 @@ export function createControllerPanel(options = {}) {
    * TO Branched — builds/rebuilds it if it's never been built yet or has
    * gone stale since it was last shown (see `scheduleBranchedRefresh`).
    *
-   * @param {'listed'|'branched'} subview
-   * @param {Element} root Subtree to query the two containers and the
+   * @param {'listed'|'branched'|'grouped'} subview
+   * @param {Element} root Subtree to query the three containers and the
    *   switcher within. Always `panelRoot` except for one call, inside
    *   `generateItemsTab` itself, which passes the tab's own not-yet-
    *   attached `layer` — `panelRoot.querySelector` wouldn't find anything
@@ -801,16 +831,21 @@ export function createControllerPanel(options = {}) {
   function applyItemsSubView(subview, root) {
     const listedEl = root.querySelector(`.${CLASS_NAMES.listElementContent}`);
     const branchedEl = root.querySelector(`.${CLASS_NAMES.branchedElementContent}`);
+    const groupedEl = root.querySelector(`.${CLASS_NAMES.groupedElementContent}`);
     const switcher = root.querySelector(`.${CLASS_NAMES.itemsSubViewSwitcher}`);
 
     listedEl?.classList.toggle(CLASS_NAMES.tabActive, subview === 'listed');
     branchedEl?.classList.toggle(CLASS_NAMES.tabActive, subview === 'branched');
+    groupedEl?.classList.toggle(CLASS_NAMES.tabActive, subview === 'grouped');
     switcher?.querySelectorAll(`.${CLASS_NAMES.itemsSubViewButton}`).forEach((button) => {
       button.classList.toggle(CLASS_NAMES.tabActive, button.getAttribute('data-subview') === subview);
     });
 
     if (subview === 'branched' && (branchedViewDirty || !branchedViewBuilt)) {
       rebuildBranchedView(branchedEl);
+    }
+    if (subview === 'grouped' && (groupedViewDirty || !groupedViewBuilt)) {
+      rebuildGroupedView(groupedEl);
     }
   }
 
@@ -882,6 +917,348 @@ export function createControllerPanel(options = {}) {
       if (branchedViewDirty) rebuildBranchedView();
     });
   }
+
+  // ---- Items tab: Grouped sub-view + Aggregate switch --------------------
+
+  /**
+   * Groups theme elements by `objectType`, preserving first-seen order —
+   * shared by the Filters tab (`generateFiltersTab`, a pure refactor of
+   * logic that used to be inline there) and the Items tab's Grouped
+   * sub-view (`rebuildGroupedView`), both of which need the exact same
+   * bucketing.
+   *
+   * @param {import('../model/themeElement.js').ThemeElement[]} elements
+   * @returns {Map<string, import('../model/themeElement.js').ThemeElement[]>}
+   *   One entry per distinct `objectType`, in first-seen order.
+   */
+  function groupThemeElementsByType(elements) {
+    const groups = new Map();
+    elements.forEach((themeElement) => {
+      if (!groups.has(themeElement.objectType)) groups.set(themeElement.objectType, []);
+      groups.get(themeElement.objectType).push(themeElement);
+    });
+    return groups;
+  }
+
+  /**
+   * Expands `item`'s own group if it's currently collapsed — called before
+   * scrolling a newly-selected Grouped-sub-view row into view (see
+   * `generateGroupedItem`'s `groupedRow.setActivated`), for the same
+   * reason `expandCollapsedAncestors` exists for Branched: a row inside a
+   * collapsed group is `display:none` (the `--collapsed` SCSS rule), and
+   * `scrollIntoView` silently no-ops on a non-rendered element. Simpler
+   * than Branched's version — a Grouped row has exactly one possible
+   * collapsed ancestor (its own group), not an arbitrary-depth chain — so
+   * this only needs a single `closest()` lookup, not a loop. Reuses the
+   * group's own disclosure button's real click handling (via a synthetic
+   * `.click()`), which also keeps the Aggregate switch's live state in
+   * sync (see that handler in `generateGroupSection`) — no separate sync
+   * call needed here.
+   *
+   * @param {Element} item A `.list-item` row inside a Grouped-sub-view
+   *   group, possibly currently collapsed.
+   * @returns {void}
+   */
+  function expandCollapsedGroupAncestor(item) {
+    const ancestor = item.closest(`.${CLASS_NAMES.groupedItem}.${CLASS_NAMES.groupedItemCollapsed}`);
+    ancestor?.querySelector(`:scope > .${CLASS_NAMES.groupedItemHeader} > .${CLASS_NAMES.groupedItemDisclosure}`)?.click();
+  }
+
+  /**
+   * Builds one Grouped-sub-view member row for `themeElement` — the same
+   * activation/visibility switches as `generateListItem` (via
+   * `buildRowControls`, flat, no cascade — a group member has no
+   * descendants). Registers `themeElement.groupedRow`, a *separate* slot
+   * from `listRow`/`treeRow` (see themeElement.js's doc comment).
+   *
+   * @param {import('../model/themeElement.js').ThemeElement} themeElement
+   *   The theme element this row represents.
+   * @returns {Element} The row, not yet attached to the DOM.
+   */
+  function generateGroupedItem(themeElement) {
+    const item = document.createElement('div');
+    item.classList.add(CLASS_NAMES.listItem);
+
+    const { activation, visibility, applyVisible } = buildRowControls(themeElement, {
+      initialSelected: overlay?.isThemeElementSelected(themeElement) ?? false,
+      initialVisible: overlay?.isThemeElementVisible(themeElement) ?? true,
+    });
+
+    themeElement.groupedRow = {
+      setActivated: (checked) => {
+        activation.setChecked(checked);
+        if (checked) {
+          expandCollapsedGroupAncestor(item);
+          scrollRowIntoView(item);
+        }
+      },
+      setVisible: applyVisible,
+      remove: () => item.remove(),
+    };
+
+    item.append(activation.wrapper, visibility.wrapper);
+    return item;
+  }
+
+  /**
+   * A group's on/off switch is the same kind of pure batch action as a
+   * Filters-tab switch (`applyFilterVisible`) — it always shows the state
+   * you last set it to, and setting it shows/hides every member's
+   * overlay. Deliberately doesn't try to track whether members have since
+   * drifted out of sync via individual row toggles, matching that same
+   * documented philosophy.
+   *
+   * @param {ReturnType<typeof createOnOffSwitch>} groupSwitch
+   * @param {import('../model/themeElement.js').ThemeElement[]} members
+   * @param {boolean} visible New visibility state for the whole group.
+   * @returns {void}
+   */
+  function applyGroupVisible(groupSwitch, members, visible) {
+    groupSwitch.setChecked(visible);
+    groupSwitch.wrapper.setAttribute(LAYER_ATTRIBUTES.visible, String(visible));
+    members.forEach((themeElement) => overlay?.setThemeElementVisible(themeElement, visible));
+  }
+
+  /**
+   * Builds one Grouped-sub-view group for `type`/`members`: a header row
+   * (disclosure button — always real/interactive, since a group only
+   * exists while it has at least one member, unlike Branched's childless-
+   * leaf case — plus the batch on/off switch, mirroring
+   * `buildFilterGroupRow`'s switch almost exactly, down to reusing its
+   * exact classes verbatim) and a children container of member rows (via
+   * `generateGroupedItem`). Registers this group's collapse-toggle
+   * function into `groupSectionsByType`, keyed by `type`, so the Aggregate
+   * switch (see `applyAggregateToAllGroups`) can bulk-collapse/expand
+   * every group without a full `rebuildGroupedView`.
+   *
+   * The switch's initial checked state is computed from real aggregate
+   * member visibility (`members.every(...)`), never hardcoded `true` —
+   * see `rebuildGroupedView`'s doc comment for why that matters here
+   * specifically (this group gets torn down and rebuilt on every dynamic
+   * content change, unlike a Filters-tab group).
+   *
+   * @param {string} type The `objectType` this group represents.
+   * @param {import('../model/themeElement.js').ThemeElement[]} members
+   * @returns {Element} The group section, not yet attached to the DOM.
+   */
+  function generateGroupSection(type, members) {
+    const groupEl = document.createElement('div');
+    groupEl.classList.add(CLASS_NAMES.groupedItem);
+
+    const header = document.createElement('div');
+    header.classList.add(CLASS_NAMES.groupedItemHeader);
+
+    const disclosure = document.createElement('button');
+    disclosure.type = 'button';
+    disclosure.classList.add(CLASS_NAMES.groupedItemDisclosure, CLASS_NAMES.iconNavigateNext);
+    disclosure.setAttribute('aria-label', strings.toggleExpandCollapse);
+
+    const childrenContainer = document.createElement('div');
+    childrenContainer.classList.add(CLASS_NAMES.groupedItemChildren);
+    members.forEach((themeElement) => childrenContainer.appendChild(generateGroupedItem(themeElement)));
+
+    /**
+     * Applies a collapsed/expanded state to this group's own DOM (children
+     * container + disclosure button), without touching
+     * `groupCollapsedByType` — used by the click handler (which also
+     * writes to that map), by the initial build below, and by
+     * `applyAggregateToAllGroups` (bulk action, via `groupSectionsByType`).
+     *
+     * @param {boolean} collapsed
+     * @returns {void}
+     */
+    const applyCollapsed = (collapsed) => {
+      groupEl.classList.toggle(CLASS_NAMES.groupedItemCollapsed, collapsed);
+      disclosure.setAttribute('aria-expanded', String(!collapsed));
+    };
+
+    disclosure.addEventListener('click', () => {
+      const collapsed = !groupCollapsedByType.get(type);
+      groupCollapsedByType.set(type, collapsed);
+      applyCollapsed(collapsed);
+      // A manual per-group toggle can change whether *every* group is now
+      // collapsed — keep the Aggregate switch's live-computed state
+      // honest immediately, not just on the next full rebuild.
+      syncAggregateSwitchState();
+    });
+
+    applyCollapsed(groupCollapsedByType.get(type) ?? false);
+    groupSectionsByType.set(type, { setCollapsed: applyCollapsed });
+
+    const initialGroupVisible = members.every((themeElement) => overlay?.isThemeElementVisible(themeElement) ?? true);
+    const groupSwitch = createOnOffSwitch({
+      label: `${type} - (${members.length})`,
+      checked: initialGroupVisible,
+      wrapperClasses: [CLASS_NAMES.filtersElementItemActivation, CLASS_NAMES.objectType, CLASS_NAMES.objectTypeTyped(type)],
+      wrapperAttributes: { [LAYER_ATTRIBUTES.visible]: String(initialGroupVisible) },
+      iconOn: CLASS_NAMES.iconToggleOn,
+      iconOff: CLASS_NAMES.iconToggleOff,
+      iconBullet: CLASS_NAMES.iconSquare,
+      labelFirst: false,
+    });
+
+    groupSwitch.wrapper.addEventListener('click', () => {
+      applyGroupVisible(groupSwitch, members, !groupSwitch.input.checked);
+    });
+
+    header.append(disclosure, groupSwitch.wrapper);
+    groupEl.append(header, childrenContainer);
+    return groupEl;
+  }
+
+  /**
+   * Is every current group collapsed? Read at both individual-toggle time
+   * and Aggregate-click time to keep the Aggregate switch's own displayed
+   * state truthful — see `syncAggregateSwitchState`.
+   *
+   * @param {Map<string, import('../model/themeElement.js').ThemeElement[]>} groups
+   * @returns {boolean}
+   */
+  function computeAggregateAllGroups(groups) {
+    return groups.size > 0 && Array.from(groups.keys()).every((type) => groupCollapsedByType.get(type) === true);
+  }
+
+  /**
+   * Pushes the Aggregate switch's live-computed checked state (see
+   * `computeAggregateAllGroups`) to its own control. Called after any
+   * individual group's disclosure toggles (`generateGroupSection`'s click
+   * handler) and after a full rebuild — never lets the switch go stale
+   * relative to what the groups are actually doing, per this feature's
+   * "recompute live, don't hardcode" requirement.
+   *
+   * @returns {void}
+   */
+  function syncAggregateSwitchState() {
+    if (!aggregateSwitchControl || !currentGroupTypes) return;
+    aggregateSwitchControl.setChecked(computeAggregateAllGroups(currentGroupTypes));
+  }
+
+  /**
+   * The Aggregate switch's click handler: a real bulk write, not just a
+   * recompute — flips every current group's `groupCollapsedByType` entry
+   * to `next` in one pass and updates each group's disclosure DOM directly
+   * via `groupSectionsByType` (rotate icon, hide/show its children
+   * container), without a full `rebuildGroupedView` — the same UI-only,
+   * no-rebuild-needed characteristic a single group's own disclosure has.
+   *
+   * @param {boolean} next New collapsed state to apply to every group.
+   * @returns {void}
+   */
+  function applyAggregateToAllGroups(next) {
+    if (!currentGroupTypes) return;
+    currentGroupTypes.forEach((members, type) => {
+      groupCollapsedByType.set(type, next);
+      groupSectionsByType.get(type)?.setCollapsed(next);
+    });
+    aggregateSwitchControl?.setChecked(next);
+  }
+
+  /**
+   * Rebuilds the Grouped sub-view's entire content from scratch: the
+   * Aggregate header row plus one `generateGroupSection` per distinct
+   * `objectType` in the current `themeElements` (via
+   * `groupThemeElementsByType`) — full rebuild, not incremental, matching
+   * Branched's own approach (see `rebuildBranchedView`'s doc comment for
+   * why: `index.js`'s `reconcileDynamicContent` calls this panel's own
+   * `removeThemeElement` before `overlayLayer.js`'s splices the element
+   * out of the shared array, so an incremental update here would risk
+   * reading a momentarily-stale array mid-batch — `scheduleGroupedRefresh`
+   * is what actually protects against that, via the same microtask
+   * coalescing).
+   *
+   * Collapse state (`groupCollapsedByType`) survives the rebuild: pruned
+   * here (any type no longer present is dropped) and seeded for any
+   * brand-new type using whatever the Aggregate switch read a moment ago
+   * (`wasAggregated`, computed from `currentGroupTypes` — the *previous*
+   * rebuild's groups — before this rebuild's pruning/seeding touches
+   * `groupCollapsedByType`) rather than the ordinary "no entry = expanded"
+   * default. Without this, a brand-new group arriving while Aggregate read
+   * "on" would spawn expanded, silently flipping Aggregate to "off" even
+   * though the user did nothing.
+   *
+   * Each group's own visibility switch is likewise computed from real
+   * member visibility, never hardcoded `true` — see `generateGroupSection`
+   * for why that matters given this full-rebuild-on-any-change strategy.
+   *
+   * @param {Element|null} [groupedEl] The Grouped container to rebuild
+   *   into. Defaults to looking it up via `panelRoot` — every caller
+   *   except `applyItemsSubView` relies on this default (mirrors
+   *   `rebuildBranchedView`'s own parameter).
+   * @returns {void}
+   */
+  function rebuildGroupedView(groupedEl = panelRoot?.querySelector(`.${CLASS_NAMES.groupedElementContent}`)) {
+    if (!groupedEl) return;
+
+    const groups = groupThemeElementsByType(themeElements);
+    const wasAggregated = currentGroupTypes ? computeAggregateAllGroups(currentGroupTypes) : false;
+
+    Array.from(groupCollapsedByType.keys()).forEach((type) => {
+      if (!groups.has(type)) groupCollapsedByType.delete(type);
+    });
+    groups.forEach((members, type) => {
+      if (!groupCollapsedByType.has(type)) groupCollapsedByType.set(type, wasAggregated);
+    });
+
+    groupedEl.innerHTML = '';
+    groupSectionsByType = new Map();
+
+    const aggregateRow = document.createElement('div');
+    aggregateRow.classList.add(CLASS_NAMES.groupedAggregateRow);
+
+    aggregateSwitchControl = createOnOffSwitch({
+      label: strings.aggregateGroups,
+      checked: false,
+      wrapperClasses: [CLASS_NAMES.listItemActivation],
+      iconOn: CLASS_NAMES.iconToggleOn,
+      iconOff: CLASS_NAMES.iconToggleOff,
+    });
+    aggregateSwitchControl.wrapper.addEventListener('click', () => {
+      applyAggregateToAllGroups(!aggregateSwitchControl.input.checked);
+    });
+    aggregateRow.appendChild(aggregateSwitchControl.wrapper);
+    groupedEl.appendChild(aggregateRow);
+
+    groups.forEach((members, type) => {
+      groupedEl.appendChild(generateGroupSection(type, members));
+    });
+
+    currentGroupTypes = groups;
+    groupedViewBuilt = true;
+    groupedViewDirty = false;
+    syncAggregateSwitchState();
+  }
+
+  /**
+   * Is the Grouped sub-view currently the one showing? Read by
+   * `scheduleGroupedRefresh` to decide whether to coalesce an immediate
+   * rebuild or just flag staleness for later — mirrors
+   * `isBranchedSubViewActive`.
+   *
+   * @returns {boolean}
+   */
+  function isGroupedSubViewActive() {
+    return panelRoot?.querySelector(`.${CLASS_NAMES.groupedElementContent}`)?.classList.contains(CLASS_NAMES.tabActive) ?? false;
+  }
+
+  /**
+   * Flags the Grouped sub-view as needing a rebuild, coalescing an
+   * immediate rebuild via a microtask if it's currently active — mirrors
+   * `scheduleBranchedRefresh` exactly, for the same correctness reason
+   * (see that function's own doc comment).
+   *
+   * @returns {void}
+   */
+  function scheduleGroupedRefresh() {
+    groupedViewDirty = true;
+    if (!isGroupedSubViewActive() || groupedRefreshScheduled) return;
+    groupedRefreshScheduled = true;
+    Promise.resolve().then(() => {
+      groupedRefreshScheduled = false;
+      if (groupedViewDirty) rebuildGroupedView();
+    });
+  }
+
+  // ---- Filters tab --------------------------------------------------------
 
   /**
    * A filter switch is a pure batch action: it always shows the state you
@@ -985,13 +1362,7 @@ export function createControllerPanel(options = {}) {
     const content = document.createElement('div');
     content.classList.add(CLASS_NAMES.filtersElementContent);
 
-    // Group by object type, preserving first-seen order.
-    const groups = new Map();
-    themeElements.forEach((themeElement) => {
-      if (!groups.has(themeElement.objectType)) groups.set(themeElement.objectType, []);
-      groups.get(themeElement.objectType).push(themeElement);
-    });
-    groups.forEach((members, type) => buildFilterGroupRow(content, type, members));
+    groupThemeElementsByType(themeElements).forEach((members, type) => buildFilterGroupRow(content, type, members));
 
     const allItem = document.createElement('div');
     allItem.classList.add(CLASS_NAMES.filtersElementItemSelectAll);
@@ -1589,13 +1960,15 @@ export function createControllerPanel(options = {}) {
       if (filtersContent) buildFilterGroupRow(filtersContent, themeElement.objectType, [themeElement]);
     }
 
-    // The Listed row above was added incrementally; the Branched
-    // sub-view's tree instead gets rebuilt wholesale — see
-    // `scheduleBranchedRefresh`'s own doc comment for why (timing
-    // relative to `overlayLayer.js`'s own add/remove, and why a full
-    // rebuild is the right call for a tree rather than incremental
-    // patching).
+    // The Listed row above was added incrementally; the Branched sub-
+    // view's tree and the Grouped sub-view's bucketed groups instead get
+    // rebuilt wholesale — see `scheduleBranchedRefresh`'s own doc comment
+    // for why (timing relative to `overlayLayer.js`'s own add/remove, and
+    // why a full rebuild is the right call rather than incremental
+    // patching); `scheduleGroupedRefresh` follows the exact same
+    // reasoning.
     scheduleBranchedRefresh();
+    scheduleGroupedRefresh();
   }
 
   /**
@@ -1641,14 +2014,18 @@ export function createControllerPanel(options = {}) {
     }
 
     // Only the Listed row's own DOM needs explicit removal above (via
-    // `listRow.remove()`) — the Branched sub-view's row for this element
-    // (if any) disappears for free the next time it's rebuilt, since a
-    // removed element is no longer in `themeElements` by then. Also drops
-    // any remembered collapsed/expanded state for this element, so a
-    // long-running, AJAX-heavy page doesn't leak `collapsedById` entries
-    // for elements that no longer exist.
+    // `listRow.remove()`) — the Branched sub-view's row and the Grouped
+    // sub-view's row for this element (if any) disappear for free the
+    // next time each is rebuilt, since a removed element is no longer in
+    // `themeElements` by then. Also drops any remembered collapsed/
+    // expanded state for this element, so a long-running, AJAX-heavy page
+    // doesn't leak `collapsedById` entries for elements that no longer
+    // exist (`groupCollapsedByType` is keyed by `objectType`, not element
+    // id, so it needs no equivalent per-element cleanup here — it's
+    // pruned wholesale inside `rebuildGroupedView` instead).
     collapsedById.delete(themeElement.id);
     scheduleBranchedRefresh();
+    scheduleGroupedRefresh();
   }
 
   /**
