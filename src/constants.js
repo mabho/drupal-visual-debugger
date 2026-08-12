@@ -23,7 +23,7 @@ export const CLASS_NAMES = {
   /**
    * Builds the per-type modifier class (e.g. `object-type--node`) that
    * `base/_types.scss` uses to set the `--vd-color--object-type` custom
-   * property in a given scope. Used on overlay layers, List/Filters rows,
+   * property in a given scope. Used on overlay layers, Items tab rows,
    * and the "Selected" tab's color cue (`setTabCue` in controllerPanel.js).
    *
    * @param {string} objectType The theme element's object type (e.g.
@@ -121,8 +121,8 @@ export const CLASS_NAMES = {
   itemsSubViewSwitcher: 'items-subview-switcher',
   itemsSubViewButton: 'items-subview-switcher__button',
   // Reuses `tabActive` (the same "active" class the top-level Selected/
-  // Items/Filters tab buttons already use) for the active sub-view
-  // button, rather than adding a redundant second "active" class.
+  // Items tab buttons already use) for the active sub-view button, rather
+  // than adding a redundant second "active" class.
 
   // Items tab's Branched (tree) sub-view.
   branchedElement: 'branched',
@@ -138,7 +138,7 @@ export const CLASS_NAMES = {
 
   // Items tab's Grouped sub-view (rows bucketed by objectType). Group
   // switches reuse `filtersElementItemActivation`/`objectType`/`iconSquare`
-  // verbatim (see buildFilterGroupRow) rather than getting their own
+  // verbatim (see generateGroupSection) rather than getting their own
   // class; the Aggregate switch reuses `listItemActivation` verbatim (see
   // the "All Elements" switches) — only the structure below is new.
   groupedElement: 'grouped',
@@ -152,13 +152,11 @@ export const CLASS_NAMES = {
   groupedItemCollapsed: 'grouped-item--collapsed',
   groupedItemChildren: 'grouped-item__children',
 
-  // Filters tab.
-  filtersElement: 'filters',
-  filtersElementContent: 'filters__content',
-  filtersElementItem: 'filters-item',
-  filtersElementItemSelectAll: 'filters-item--select-all',
+  // Shared per-type on/off switch styling — originally the Filters tab's
+  // own (that tab has since been removed entirely), kept because the
+  // Items tab's Grouped sub-view still reuses these exact classes
+  // verbatim for its own group switches (see generateGroupSection).
   filtersElementItemActivation: 'filters-item__activation',
-  filtersElementItemActivationHover: 'filter-item__activation--hover',
   iconSquare: 'icon-square',
   iconWithinContent: 'icon-within-content',
 };
@@ -179,8 +177,6 @@ export const IDS = {
   controllerElementSelected: 'visual-debugger--controller-layer--selected',
   controllerButtonList: 'visual-debugger--controller-layer--button--list',
   controllerElementList: 'visual-debugger--controller-layer--list',
-  controllerButtonFilters: 'visual-debugger--controller-layer--button--filters',
-  controllerElementFilters: 'visual-debugger--controller-layer--filters',
 };
 
 export const LAYER_ATTRIBUTES = {

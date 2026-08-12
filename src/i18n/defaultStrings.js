@@ -24,7 +24,6 @@ export const defaultStrings = {
   subViewGrouped: 'Grouped',
   toggleExpandCollapse: 'Expand/collapse',
   aggregateGroups: 'Aggregate',
-  tabFilters: 'Filters',
   allElements: 'All Elements',
   noDebugDataTitle: 'No Drupal debug data found',
   noDebugDataMessage: 'This page may not be a Drupal site, or Twig debugging is turned off.',

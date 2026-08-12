@@ -13,7 +13,7 @@ import panelStyles from '../../generated/panelStyles.css';
 
 /**
  * Builds the fly-out inspector panel: activation toggle, tabbed
- * Selected/Items (Listed/Branched sub-views)/Filters views, active
+ * Selected/Items (Listed/Branched/Grouped sub-views) views, active
  * element info, theme suggestions, template file path, and the
  * click-drag resize handle.
  *
@@ -67,15 +67,6 @@ export function createControllerPanel(options = {}) {
   // can disconnect it — it watches document.body, not anything this panel
   // owns/removes itself.
   let bodyOffsetObserver = null;
-  // Filters-tab group state, keyed by `objectType` — `{ item, filterSwitch,
-  // members }` per group. Lifted here (rather than staying local to
-  // `generateFiltersTab`, as it originally was) so `addThemeElement`/
-  // `removeThemeElement` can find, update, or create a group's row without
-  // rebuilding the whole tab — see those functions and `buildFilterGroupRow`.
-  // Populated once, by `generateFiltersTab` itself, at whichever point it
-  // gets called (construction time, or later if the panel started in the
-  // empty state and this is the first dynamically-added element).
-  let filterGroupsByType = new Map();
   // Items tab's Branched sub-view state. `collapsedById` tracks each
   // node's collapsed/expanded state independent of the DOM, keyed by
   // `themeElement.id` (parser-assigned once, stable for that object's
@@ -214,11 +205,10 @@ export function createControllerPanel(options = {}) {
   }
 
   /**
-   * Builds the tab bar (Selected / List / Filters) and its bottom
-   * separator. Each button's click hands off to `switchToTab`; the
-   * "Selected" button also gets the `tabsNavigationTabSelected` class,
-   * which the CSS uses to show the object-type-colored cue dot that
-   * `setTabCue` maintains.
+   * Builds the tab bar (Selected / Items) and its bottom separator. Each
+   * button's click hands off to `switchToTab`; the "Selected" button
+   * also gets the `tabsNavigationTabSelected` class, which the CSS uses
+   * to show the object-type-colored cue dot that `setTabCue` maintains.
    *
    * @returns {Element} The tab navigation bar, not yet attached to the DOM.
    */
@@ -240,11 +230,6 @@ export function createControllerPanel(options = {}) {
         id: IDS.controllerButtonList,
         label: strings.tabItems,
         targetId: IDS.controllerElementList,
-      },
-      {
-        id: IDS.controllerButtonFilters,
-        label: strings.tabFilters,
-        targetId: IDS.controllerElementFilters,
       },
     ];
 
@@ -274,7 +259,7 @@ export function createControllerPanel(options = {}) {
    * `generateControllerLayer` has finished building the DOM).
    *
    * @param {string} targetId The target panel's element `id` — one of
-   *   `IDS.controllerElementSelected`/`controllerElementList`/`controllerElementFilters`.
+   *   `IDS.controllerElementSelected`/`controllerElementList`.
    * @returns {void}
    */
   function switchToTab(targetId) {
@@ -378,7 +363,7 @@ export function createControllerPanel(options = {}) {
    *   Listed rows, which have no descendants, leave it unset. Never
    *   called from `applyVisible` itself (only from a real user click) —
    *   `applyVisible` is a passive state-sync path, not a trigger point,
-   *   so an externally-driven sync (e.g. the Filters tab hiding this row)
+   *   so an externally-driven sync (e.g. another sub-view hiding this row)
    *   doesn't redundantly re-cascade.
    * @returns {{
    *   activation: ReturnType<typeof createOnOffSwitch>,
@@ -397,8 +382,9 @@ export function createControllerPanel(options = {}) {
     });
 
     activation.wrapper.addEventListener('click', () => {
-      // A row hidden by a filter (Filters tab), or (Branched only) by a
-      // hidden ancestor's cascade, shouldn't be selectable.
+      // A row hidden elsewhere (e.g. Grouped's own group switch), or
+      // (Branched only) by a hidden ancestor's cascade, shouldn't be
+      // selectable.
       if (activation.wrapper.getAttribute(LAYER_ATTRIBUTES.visible) === 'true') {
         overlay?.toggleThemeElementSelection(themeElement);
       }
@@ -417,7 +403,8 @@ export function createControllerPanel(options = {}) {
      * Syncs this row's own visibility switch + disabled look, without
      * touching the overlay — used both by this row's own click (which also
      * tells the overlay) and by listRow/treeRow.setVisible (called BY the
-     * overlay when visibility changes elsewhere, e.g. the Filters tab).
+     * overlay when visibility changes elsewhere, e.g. another sub-view's
+     * row for the same element).
      *
      * @param {boolean} visible New visibility state to reflect.
      * @returns {void}
@@ -440,8 +427,7 @@ export function createControllerPanel(options = {}) {
 
   /**
    * Builds the Listed sub-view's content: one `generateListItem` row per
-   * theme element, in document order, plus an "All Elements" switch
-   * (mirroring the Filters tab's own — see `generateFiltersTab`) that
+   * theme element, in document order, plus an "All Elements" switch that
    * shows/hides every element's overlay at once.
    *
    * @returns {Element} The Listed sub-view content, not yet attached to the DOM.
@@ -476,8 +462,8 @@ export function createControllerPanel(options = {}) {
       allSwitch.setChecked(next);
       // `setThemeElementVisible` already calls the affected row's own
       // `listRow.setVisible` internally (see overlayLayer.js's
-      // `setVisible`) — same as `applyFilterVisible` relies on for the
-      // Filters tab, no separate call needed here.
+      // `setVisible`) — same as `applyGroupVisible` relies on for the
+      // Grouped sub-view, no separate call needed here.
       themeElements.forEach((themeElement) => overlay?.setThemeElementVisible(themeElement, next));
     });
 
@@ -491,11 +477,12 @@ export function createControllerPanel(options = {}) {
    * Builds one Listed-sub-view row for a single theme element, via
    * `buildRowControls` (no cascade hook — a flat row has no descendants).
    * Registers `themeElement.listRow` so the overlay engine (selection/
-   * visibility) and the Filters tab (batch visibility) can keep this
-   * row's switches in sync when either changes from somewhere other than
-   * this row itself; a *separate* slot from `treeRow` (see
-   * themeElement.js's doc comment) since the Branched sub-view's row for
-   * the same element, if it currently exists, needs independent updates.
+   * visibility changes originating anywhere — another sub-view's row, a
+   * batch toggle) can keep this row's switches in sync without going
+   * through synthetic DOM events; a *separate* slot from `treeRow`/
+   * `groupedRow` (see themeElement.js's doc comment) since another
+   * sub-view's row for the same element, if it currently exists, needs
+   * independent updates.
    *
    * @param {import('../model/themeElement.js').ThemeElement} themeElement
    *   The theme element this row represents.
@@ -512,10 +499,10 @@ export function createControllerPanel(options = {}) {
 
     themeElement.listRow = {
       // Scrolls this row into view whenever it becomes selected from
-      // *anywhere* (a real click on the overlay, the Filters tab, the
-      // Branched sub-view) — not just a click on this row itself, which
-      // is already in view. Harmless in that case too: scrolling an
-      // already-visible element is a no-op.
+      // *anywhere* (a real click on the overlay, the Branched sub-view,
+      // the Grouped sub-view) — not just a click on this row itself,
+      // which is already in view. Harmless in that case too: scrolling
+      // an already-visible element is a no-op.
       setActivated: (checked) => {
         activation.setChecked(checked);
         if (checked) scrollRowIntoView(item);
@@ -579,10 +566,11 @@ export function createControllerPanel(options = {}) {
    * descendant found in `childrenOf` (from `deriveThemeElementTree`) — an
    * unconditional batch action, not a tri-state: re-showing a parent
    * re-shows every descendant regardless of whether any were individually
-   * hidden before the parent was hidden, mirroring the Filters tab's own
-   * documented "All Elements" philosophy (`applyFilterVisible`). Each
-   * descendant's `overlay.setThemeElementVisible` call already syncs that
-   * descendant's own `listRow`/`treeRow` internally — no separate sync
+   * hidden before the parent was hidden, mirroring the same "All Elements"
+   * philosophy the Listed sub-view's own all-switch uses (see
+   * `generateListedSubView`). Each descendant's
+   * `overlay.setThemeElementVisible` call already syncs that descendant's
+   * own `listRow`/`treeRow`/`groupedRow` internally — no separate sync
    * needed here.
    *
    * @param {import('../model/themeElement.js').ThemeElement} themeElement
@@ -921,26 +909,6 @@ export function createControllerPanel(options = {}) {
   // ---- Items tab: Grouped sub-view + Aggregate switch --------------------
 
   /**
-   * Groups theme elements by `objectType`, preserving first-seen order —
-   * shared by the Filters tab (`generateFiltersTab`, a pure refactor of
-   * logic that used to be inline there) and the Items tab's Grouped
-   * sub-view (`rebuildGroupedView`), both of which need the exact same
-   * bucketing.
-   *
-   * @param {import('../model/themeElement.js').ThemeElement[]} elements
-   * @returns {Map<string, import('../model/themeElement.js').ThemeElement[]>}
-   *   One entry per distinct `objectType`, in first-seen order.
-   */
-  function groupThemeElementsByType(elements) {
-    const groups = new Map();
-    elements.forEach((themeElement) => {
-      if (!groups.has(themeElement.objectType)) groups.set(themeElement.objectType, []);
-      groups.get(themeElement.objectType).push(themeElement);
-    });
-    return groups;
-  }
-
-  /**
    * Expands `item`'s own group if it's currently collapsed — called before
    * scrolling a newly-selected Grouped-sub-view row into view (see
    * `generateGroupedItem`'s `groupedRow.setActivated`), for the same
@@ -993,8 +961,8 @@ export function createControllerPanel(options = {}) {
         }
       },
       // Runs for a visibility change from *any* source (this row's own
-      // click, another sub-view's row, a Filters-tab batch toggle, a
-      // direct overlay click) — not just this row's own switch, so
+      // click, another sub-view's row, a direct overlay click) — not just
+      // this row's own switch, so
       // `applyVisible` alone (this row's own visuals) isn't enough; the
       // owning group's switch needs the same immediate resync. See
       // `syncGroupSwitchForType`'s doc comment for the "at least one
@@ -1011,11 +979,10 @@ export function createControllerPanel(options = {}) {
   }
 
   /**
-   * A click on a group's own switch is a batch action, same as a
-   * Filters-tab switch (`applyFilterVisible`): it sets every member's
-   * overlay to `visible`. Unlike Filters' switch, though, the checked
-   * state this leaves behind isn't sticky — each member's own
-   * `groupedRow.setVisible` (triggered as a side effect of this same
+   * A click on a group's own switch is a batch action: it sets every
+   * member's overlay to `visible`. The checked state this leaves behind
+   * isn't sticky, though — each member's own `groupedRow.setVisible`
+   * (triggered as a side effect of this same
    * `overlay.setThemeElementVisible` call, per member) immediately calls
    * `syncGroupSwitchForType`, so the switch converges to whatever
    * "at least one member visible" actually reads once every member has
@@ -1036,10 +1003,10 @@ export function createControllerPanel(options = {}) {
    * Builds one Grouped-sub-view group for `type`/`members`: a header row
    * (disclosure button — always real/interactive, since a group only
    * exists while it has at least one member, unlike Branched's childless-
-   * leaf case — plus the batch on/off switch, mirroring
-   * `buildFilterGroupRow`'s switch almost exactly, down to reusing its
-   * exact classes verbatim) and a children container of member rows (via
-   * `generateGroupedItem`). Registers this group's collapse-toggle
+   * leaf case — plus the batch on/off switch, reusing the shared per-type
+   * switch styling verbatim, i.e. `CLASS_NAMES.filtersElementItemActivation`/
+   * `objectType`/`iconSquare`) and a children container of member rows
+   * (via `generateGroupedItem`). Registers this group's collapse-toggle
    * function into `groupSectionsByType`, keyed by `type`, so the Aggregate
    * switch (see `applyAggregateToAllGroups`) can bulk-collapse/expand
    * every group without a full `rebuildGroupedView`.
@@ -1052,7 +1019,7 @@ export function createControllerPanel(options = {}) {
    * triggered the change). Never hardcoded `true` — see
    * `rebuildGroupedView`'s doc comment for why that matters here
    * specifically (this group gets torn down and rebuilt on every dynamic
-   * content change, unlike a Filters-tab group).
+   * content change).
    *
    * @param {string} type The `objectType` this group represents.
    * @param {import('../model/themeElement.js').ThemeElement[]} members
@@ -1137,10 +1104,10 @@ export function createControllerPanel(options = {}) {
    * "on"; only once *every* member is hidden does it read "off". Called
    * from every member's own `groupedRow.setVisible` (see
    * `generateGroupedItem`), which fires for a visibility change from
-   * *any* source — this row's own click, another sub-view's row, a
-   * Filters-tab batch toggle, or a direct overlay click — not just a
-   * click on this group's own switch, so the group's displayed state
-   * never lags behind what's actually visible on the page.
+   * *any* source — this row's own click, another sub-view's row, or a
+   * direct overlay click — not just a click on this group's own switch,
+   * so the group's displayed state never lags behind what's actually
+   * visible on the page.
    *
    * Deliberately a minimum-threshold ("some", not "every") reading,
    * confirmed directly with the user: a group of 5 members reads
@@ -1212,8 +1179,8 @@ export function createControllerPanel(options = {}) {
   /**
    * Rebuilds the Grouped sub-view's entire content from scratch: the
    * Aggregate header row plus one `generateGroupSection` per distinct
-   * `objectType` in the current `themeElements` (via
-   * `groupThemeElementsByType`) — full rebuild, not incremental, matching
+   * `objectType` in the current `themeElements` (bucketed here, preserving
+   * first-seen order) — full rebuild, not incremental, matching
    * Branched's own approach (see `rebuildBranchedView`'s doc comment for
    * why: `index.js`'s `reconcileDynamicContent` calls this panel's own
    * `removeThemeElement` before `overlayLayer.js`'s splices the element
@@ -1245,7 +1212,11 @@ export function createControllerPanel(options = {}) {
   function rebuildGroupedView(groupedEl = panelRoot?.querySelector(`.${CLASS_NAMES.groupedElementContent}`)) {
     if (!groupedEl) return;
 
-    const groups = groupThemeElementsByType(themeElements);
+    const groups = new Map();
+    themeElements.forEach((themeElement) => {
+      if (!groups.has(themeElement.objectType)) groups.set(themeElement.objectType, []);
+      groups.get(themeElement.objectType).push(themeElement);
+    });
     const wasAggregated = currentGroupTypes ? computeAggregateAllGroups(currentGroupTypes) : false;
 
     Array.from(groupCollapsedByType.keys()).forEach((type) => {
@@ -1312,136 +1283,6 @@ export function createControllerPanel(options = {}) {
       groupedRefreshScheduled = false;
       if (groupedViewDirty) rebuildGroupedView();
     });
-  }
-
-  // ---- Filters tab --------------------------------------------------------
-
-  /**
-   * A filter switch is a pure batch action: it always shows the state you
-   * last set it to, and setting it shows/hides every member element. It
-   * deliberately doesn't try to track whether members have since drifted
-   * out of sync via individual List-tab toggles.
-   *
-   * @param {{ wrapper: Element, input: Element, setChecked: (checked: boolean) => void }} filterSwitch
-   *   The on/off switch (from `createOnOffSwitch`) representing this type.
-   * @param {import('../model/themeElement.js').ThemeElement[]} members
-   *   Every theme element of this type.
-   * @param {boolean} visible New visibility state for the whole group.
-   * @returns {void}
-   */
-  function applyFilterVisible(filterSwitch, members, visible) {
-    filterSwitch.setChecked(visible);
-    filterSwitch.wrapper.setAttribute(LAYER_ATTRIBUTES.visible, String(visible));
-    members.forEach((themeElement) => overlay?.setThemeElementVisible(themeElement, visible));
-  }
-
-  /**
-   * Refreshes a Filters-tab group's label to reflect its current member
-   * count — call after `addThemeElement`/`removeThemeElement` mutate a
-   * group's `members` array in place.
-   *
-   * @param {string} type The `objectType` whose group label to refresh.
-   * @returns {void}
-   */
-  function updateFilterGroupLabel(type) {
-    const group = filterGroupsByType.get(type);
-    const label = group?.filterSwitch.wrapper.querySelector('label');
-    if (label) label.textContent = `${type} - (${group.members.length})`;
-  }
-
-  /**
-   * Builds one Filters-tab group row for `type`/`members`, appends it to
-   * `content`, and registers it in `filterGroupsByType` — used both by
-   * `generateFiltersTab` (once per distinct type found at construction, or
-   * whenever the panel transitions out of its empty state) and by
-   * `addThemeElement` when a brand-new `objectType` shows up later than
-   * that. `members` becomes the group's live, in-place-mutated membership
-   * list — `addThemeElement`/`removeThemeElement` push/splice this same
-   * array rather than replacing it, which is why the row itself never
-   * needs to be rebuilt for a simple membership change (see
-   * `updateFilterGroupLabel`).
-   *
-   * @param {Element} content The Filters tab's row container to append to.
-   * @param {string} type The `objectType` this group represents.
-   * @param {import('../model/themeElement.js').ThemeElement[]} members
-   *   Initial members of this group.
-   * @returns {void}
-   */
-  function buildFilterGroupRow(content, type, members) {
-    const item = document.createElement('div');
-    item.classList.add(CLASS_NAMES.filtersElementItem);
-
-    const filterSwitch = createOnOffSwitch({
-      label: `${type} - (${members.length})`,
-      checked: true,
-      wrapperClasses: [CLASS_NAMES.filtersElementItemActivation, CLASS_NAMES.objectType, CLASS_NAMES.objectTypeTyped(type)],
-      wrapperAttributes: { [LAYER_ATTRIBUTES.visible]: 'true' },
-      iconOn: CLASS_NAMES.iconToggleOn,
-      iconOff: CLASS_NAMES.iconToggleOff,
-      iconBullet: CLASS_NAMES.iconSquare,
-      labelFirst: false,
-    });
-
-    filterSwitch.wrapper.addEventListener('click', () => {
-      applyFilterVisible(filterSwitch, members, !filterSwitch.input.checked);
-    });
-    filterSwitch.wrapper.addEventListener('mouseenter', () => {
-      filterSwitch.wrapper.classList.add(CLASS_NAMES.filtersElementItemActivationHover);
-      members.forEach((themeElement) => overlay?.hoverThemeElement(themeElement));
-    });
-    filterSwitch.wrapper.addEventListener('mouseleave', () => {
-      filterSwitch.wrapper.classList.remove(CLASS_NAMES.filtersElementItemActivationHover);
-      members.forEach((themeElement) => overlay?.unhoverThemeElement(themeElement));
-    });
-
-    item.appendChild(filterSwitch.wrapper);
-    content.appendChild(item);
-    filterGroupsByType.set(type, { item, filterSwitch, members });
-  }
-
-  /**
-   * Builds the "Filters" tab: one batch-visibility switch per distinct
-   * `objectType` found on the page (labeled with the type and its element
-   * count, via `buildFilterGroupRow`), plus an "All Elements" switch that
-   * sets every type at once.
-   *
-   * @returns {Element} The Filters tab panel, not yet attached to the DOM.
-   */
-  function generateFiltersTab() {
-    const layer = document.createElement('div');
-    layer.id = IDS.controllerElementFilters;
-    layer.classList.add(CLASS_NAMES.filtersElement, CLASS_NAMES.navTarget);
-
-    const title = document.createElement('h3');
-    title.textContent = strings.tabFilters;
-
-    const content = document.createElement('div');
-    content.classList.add(CLASS_NAMES.filtersElementContent);
-
-    groupThemeElementsByType(themeElements).forEach((members, type) => buildFilterGroupRow(content, type, members));
-
-    const allItem = document.createElement('div');
-    allItem.classList.add(CLASS_NAMES.filtersElementItemSelectAll);
-
-    const allSwitch = createOnOffSwitch({
-      label: strings.allElements,
-      checked: true,
-      wrapperClasses: [CLASS_NAMES.filtersElementItemActivation],
-      iconOn: CLASS_NAMES.iconToggleOn,
-      iconOff: CLASS_NAMES.iconToggleOff,
-    });
-
-    allSwitch.wrapper.addEventListener('click', () => {
-      const next = !allSwitch.input.checked;
-      allSwitch.setChecked(next);
-      filterGroupsByType.forEach(({ filterSwitch, members }) => applyFilterVisible(filterSwitch, members, next));
-    });
-
-    allItem.appendChild(allSwitch.wrapper);
-    content.prepend(allItem);
-
-    layer.append(title, content);
-    return layer;
   }
 
   /**
@@ -1526,7 +1367,7 @@ export function createControllerPanel(options = {}) {
   /**
    * Builds the whole fly-out panel: the activation form (top checkbox),
    * and the scrollable content area — Active Element, tab navigation, and
-   * the Selected/List/Filters panels when `themeElements` is non-empty, or
+   * the Selected/Items panels when `themeElements` is non-empty, or
    * the `generateEmptyStateLayer` placeholder in its place when it's empty
    * (see that function's doc comment for why) — then seals it behind a
    * Shadow DOM boundary. Restores the activation state from `storage` and
@@ -1590,7 +1431,6 @@ export function createControllerPanel(options = {}) {
         generateTabsNavigation(),
         generateSelectedElementLayer(),
         generateItemsTab(),
-        generateFiltersTab(),
       );
     } else {
       content.append(generateEmptyStateLayer());
@@ -1886,7 +1726,7 @@ export function createControllerPanel(options = {}) {
   /**
    * Colors the "Selected" tab's `::before` dot to match the selected
    * element's object type, via the same `--color--object-type` cascade the
-   * overlay/list/filter rows use (see `base/_types.scss`). Clears any
+   * overlay/Items tab rows use (see `base/_types.scss`). Clears any
    * previous object-type class off the tab button first, then — if
    * something's selected — adds the current one.
    *
@@ -1969,18 +1809,18 @@ export function createControllerPanel(options = {}) {
    * the very first theme element ever seen on this page), tears that down
    * and builds the normal tab UI fresh instead — since `themeElements`
    * already includes `themeElement` by this point, the freshly-built
-   * List/Filters tabs already account for it, so there's nothing further
-   * to do on that path. Deliberately does not re-run
+   * Items tab already accounts for it, so there's nothing further to do
+   * on that path. Deliberately does not re-run
    * `generateSliderButton`/`calculateInitialControllerWidth`/
    * `checkControllerActivation` — those already ran once in the original
    * `executePostActivation` regardless of empty state; rerunning them
    * would create a second slider button and duplicate `document`-level
    * `mousemove`/`mouseup` listeners.
    *
-   * Otherwise (the panel already has a full tab UI), appends one List row
-   * and either updates the matching Filters group's membership/label or
-   * creates a brand-new group if `themeElement.objectType` hasn't been
-   * seen before.
+   * Otherwise (the panel already has a full tab UI), appends one Listed
+   * row; the Branched and Grouped sub-views are scheduled for a full
+   * rebuild instead of an incremental update (see `scheduleBranchedRefresh`/
+   * `scheduleGroupedRefresh` below).
    *
    * @param {import('../model/themeElement.js').ThemeElement} themeElement
    *   The newly-discovered theme element (already in `themeElements`).
@@ -1996,7 +1836,6 @@ export function createControllerPanel(options = {}) {
         generateTabsNavigation(),
         generateSelectedElementLayer(),
         generateItemsTab(),
-        generateFiltersTab(),
       );
       updateActiveElement();
       updateSelectedElement();
@@ -2006,15 +1845,6 @@ export function createControllerPanel(options = {}) {
 
     const listContent = panelRoot.querySelector(`#${IDS.controllerElementList} .${CLASS_NAMES.listElementContent}`);
     listContent?.appendChild(generateListItem(themeElement));
-
-    const group = filterGroupsByType.get(themeElement.objectType);
-    if (group) {
-      group.members.push(themeElement);
-      updateFilterGroupLabel(themeElement.objectType);
-    } else {
-      const filtersContent = panelRoot.querySelector(`#${IDS.controllerElementFilters} .${CLASS_NAMES.filtersElementContent}`);
-      if (filtersContent) buildFilterGroupRow(filtersContent, themeElement.objectType, [themeElement]);
-    }
 
     // The Listed row above was added incrementally; the Branched sub-
     // view's tree and the Grouped sub-view's bucketed groups instead get
@@ -2030,17 +1860,16 @@ export function createControllerPanel(options = {}) {
   /**
    * Reverses `addThemeElement`'s incremental path — call BEFORE
    * `overlayLayer.js`'s own `removeThemeElement` for the same
-   * `themeElement`, while `themeElement.listRow`/`treeRow`/`instanceLayer`
-   * are still intact (overlay's removal is what nulls them). Resets the
-   * Active/Selected panels first if either was pointing at `themeElement`
-   * — since overlay's `removeThemeElement` also deselects via
-   * `setChecked`, but hover (`activeThemeElement`) has no overlay-side
-   * equivalent to check, this identity check is this panel's own
-   * responsibility regardless. Removes the element's Listed row and
-   * either updates or removes its Filters group (removed entirely once
-   * the group's last member is gone); schedules a Branched sub-view
-   * refresh (see `scheduleBranchedRefresh`) rather than removing a
-   * Branched row directly.
+   * `themeElement`, while `themeElement.listRow`/`treeRow`/`groupedRow`/
+   * `instanceLayer` are still intact (overlay's removal is what nulls
+   * them). Resets the Active/Selected panels first if either was pointing
+   * at `themeElement` — since overlay's `removeThemeElement` also
+   * deselects via `setChecked`, but hover (`activeThemeElement`) has no
+   * overlay-side equivalent to check, this identity check is this panel's
+   * own responsibility regardless. Removes the element's Listed row;
+   * schedules a Branched/Grouped sub-view refresh (see
+   * `scheduleBranchedRefresh`/`scheduleGroupedRefresh`) rather than
+   * removing a Branched/Grouped row directly.
    *
    * Reverting to the empty-state placeholder if this removes the very
    * last theme element is a plausible nice-to-have, deliberately not
@@ -2056,18 +1885,6 @@ export function createControllerPanel(options = {}) {
     if (defaultThemeElement === themeElement) resetDefaultThemeElement();
 
     themeElement.listRow?.remove();
-
-    const group = filterGroupsByType.get(themeElement.objectType);
-    if (group) {
-      const index = group.members.indexOf(themeElement);
-      if (index !== -1) group.members.splice(index, 1);
-      if (group.members.length === 0) {
-        group.item.remove();
-        filterGroupsByType.delete(themeElement.objectType);
-      } else {
-        updateFilterGroupLabel(themeElement.objectType);
-      }
-    }
 
     // Only the Listed row's own DOM needs explicit removal above (via
     // `listRow.remove()`) — the Branched sub-view's row and the Grouped
@@ -2112,8 +1929,8 @@ export function createControllerPanel(options = {}) {
    * neither of which this panel ever removes), so without this they — and
    * every closure they hold onto (`panelRoot`, `storage`, `strings`, this
    * entire factory's scope) — would keep running, and keep the panel
-   * alive in memory, forever. Everything else (tab/list/filter row
-   * listeners, the activation checkbox, etc.) lives inside `panelHost`'s
+   * alive in memory, forever. Everything else (tab/row listeners, the
+   * activation checkbox, etc.) lives inside `panelHost`'s
    * shadow tree and is removed along with it, with no separate cleanup
    * needed.
    *

@@ -41,7 +41,7 @@ import { CLASS_NAMES, LAYER_ATTRIBUTES } from '../constants.js';
  *   destroy: () => void,
  * }} `baseLayer` is the container element holding every instance layer —
  *   append it to the document once. The rest of the shape is the API
- *   surface the controller panel's List/Filters tabs drive directly (see
+ *   surface the controller panel's Items tab sub-views drive directly (see
  *   each named function below for details); `attachControllerHooks` wires
  *   up the reverse direction (overlay → panel notifications);
  *   `addThemeElement`/`removeThemeElement` incorporate/evict a theme
@@ -234,10 +234,10 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
   /**
    * Is this theme element's overlay currently visible? The visibility
    * counterpart to `isChecked` — used by row-building code (the Items
-   * tab's Listed/Branched sub-views) to read real current state rather
-   * than assuming a default, since a row can be (re)built well after the
-   * element's actual visibility was last changed elsewhere (a Filters-tab
-   * batch toggle, another sub-view's switch, etc.).
+   * tab's sub-views) to read real current state rather than assuming a
+   * default, since a row can be (re)built well after the element's actual
+   * visibility was last changed elsewhere (another sub-view's switch, a
+   * batch toggle, etc.).
    *
    * @param {import('../model/themeElement.js').ThemeElement} themeElement
    *   The theme element to check. Must already have an `instanceLayer`.
@@ -248,10 +248,10 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
   }
 
   /**
-   * Synthetic hover, for use by the List (and Filters) tab: a real mouse
-   * hover on the overlay itself is covered by CSS `:hover`, but hovering a
-   * list row doesn't put the mouse over the overlay, so its highlight has
-   * to be toggled explicitly.
+   * Synthetic hover, for use by the Items tab's rows: a real mouse hover
+   * on the overlay itself is covered by CSS `:hover`, but hovering a list
+   * row doesn't put the mouse over the overlay, so its highlight has to be
+   * toggled explicitly.
    *
    * @param {import('../model/themeElement.js').ThemeElement} themeElement
    *   The theme element to highlight as hovered.
@@ -1023,7 +1023,7 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
  * @typedef {object} ControllerHooks
  * @property {(themeElement: import('../model/themeElement.js').ThemeElement) => void} setActiveThemeElement
  *   Called when a theme element becomes hovered (real mouseenter on its
- *   overlay, or a synthetic hover from the List/Filters tab).
+ *   overlay, or a synthetic hover from the Items tab).
  * @property {() => void} resetActiveThemeElement
  *   Called when the currently-hovered theme element stops being hovered.
  * @property {(themeElement: import('../model/themeElement.js').ThemeElement) => void} setDefaultThemeElement

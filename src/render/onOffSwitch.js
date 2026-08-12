@@ -9,8 +9,8 @@ import { CLASS_NAMES } from '../constants.js';
  * the visual state in sync with whatever triggered the change.
  *
  * Ported from the original module's Drupal.vdUtilities.generateOnOffSwitch,
- * trimmed to what the List/Filters tabs need: no generic eventListeners
- * array, no Drupal.t() coupling.
+ * trimmed to what the Items tab's rows/switches need: no generic
+ * eventListeners array, no Drupal.t() coupling.
  *
  * @param {object} [options]
  * @param {string} [options.label] Visible text label. When non-empty, a
@@ -29,7 +29,8 @@ import { CLASS_NAMES } from '../constants.js';
  * @param {string} options.iconOn Icon class shown when checked.
  * @param {string} options.iconOff Icon class shown when unchecked.
  * @param {string} [options.iconBullet] Extra static icon class prepended before everything
- *   else (used by the Filters tab for its per-type color swatch).
+ *   else (used by the Items tab's Grouped sub-view for its per-type color
+ *   swatch — see generateGroupSection).
  * @returns {{
  *   wrapper: Element,
  *   input: Element,
@@ -93,7 +94,7 @@ export function createOnOffSwitch({
 
   if (label) {
     // Every switch needs its own id for the label association below —
-    // there can be many of these (one per List/Filters row) — matching the
+    // there can be many of these (one per Items tab row) — matching the
     // original module's generateOnOffSwitch, which did the same via its own
     // generateUniqueIdentifier().
     input.id = `vd-switch-${Math.random().toString(36).substring(7)}`;

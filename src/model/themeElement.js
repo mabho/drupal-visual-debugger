@@ -15,9 +15,9 @@
  *   live as it stuck/unsticks, and to find/detach it on removal.
  * @property {{setActivated: (checked: boolean) => void, setVisible: (visible: boolean) => void, remove: () => void}|null} listRow
  *   Populated by the controller panel's `generateListItem` (Items tab,
- *   Listed sub-view) — lets `overlayLayer.js` (selection/visibility
- *   changes) and the Filters tab (batch visibility) sync that row's
- *   switches without going through synthetic DOM events.
+ *   Listed sub-view) — lets `overlayLayer.js` sync that row's switches
+ *   (selection/visibility changes originating elsewhere) without going
+ *   through synthetic DOM events.
  * @property {{setActivated: (checked: boolean) => void, setVisible: (visible: boolean) => void, remove: () => void}|null} treeRow
  *   Same contract as `listRow`, populated by `generateTreeItem` (Items
  *   tab, Branched sub-view) instead — a *separate* slot, deliberately not

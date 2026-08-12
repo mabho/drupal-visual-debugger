@@ -488,9 +488,9 @@
 
       // The global "Aggregate" collapse-all/expand-all switch. Its own
       // switch markup reuses `.list-item__activation` verbatim (see the
-      // "All Elements" switches in controllerPanel.js's
-      // generateListedSubView/generateFiltersTab) — only this row's
-      // separation from the group list below is new.
+      // "All Elements" switch in controllerPanel.js's
+      // generateListedSubView) — only this row's separation from the
+      // group list below is new.
       &__aggregate {
         border-bottom: var(--#{variables.$prefix}grouped-aggregate--border-bottom);
         margin-bottom: var(--#{variables.$prefix}grouped-aggregate--margin-bottom);
@@ -503,10 +503,10 @@
           column-gap: var(--#{variables.$prefix}branched-item--row--gap);
           display: flex;
 
-          // Reuses the Filters tab's own per-type switch styling verbatim
-          // (see buildFilterGroupRow/generateGroupSection) — only this
-          // header wrapper and the disclosure/children below are new,
-          // Grouped-specific markup.
+          // Reuses the shared per-type switch styling verbatim (see
+          // `.filters-item__activation` below and generateGroupSection)
+          // — only this header wrapper and the disclosure/children below
+          // are new, Grouped-specific markup.
           .filters-item__activation {
             flex: 1;
           }
@@ -541,44 +541,36 @@
       }
     }
 
-    // Filters group.
-    .filters {
-      background-color: var(--#{variables.$prefix}filters-element--background-color);
-      padding: var(--#{variables.$prefix}filters-element--padding);
+    // Shared per-type on/off switch styling — originally the Filters
+    // tab's own (that tab has been removed entirely); kept as its own
+    // top-level rule, not nested under a tab-specific wrapper, because
+    // the Items tab's Grouped sub-view still reuses this exact class
+    // verbatim for its own group switches (see `.grouped-item__header`
+    // above and generateGroupSection).
+    .filters-item__activation {
+      align-items: var(--#{variables.$prefix}filters-element--filter-item--activation--align-items);
+      column-gap: var(--#{variables.$prefix}filters-element--filter-item--activation--column-gap);
+      cursor: var(--#{variables.$prefix}filters-element--filter-item--activation--cursor);
+      display: flex;
+      font-weight: var(--#{variables.$prefix}filters-element--filter-item--activation--font-weight);
+      justify-content: var(--#{variables.$prefix}filters-element--filter-item--activation--justify-content);
+      padding: var(--#{variables.$prefix}filters-element--filter-item--activation--padding);
+      transition: background-color var(--#{variables.$prefix}transition-speed);
 
-      &__content {
-        display: flex;
-        flex-direction: var(--#{variables.$prefix}filters-element--content--flex-direction);
-        gap: var(--#{variables.$prefix}filters-element--content--gap);
+      &[data-vd-visible='false'] {
+        opacity: var(--#{variables.$prefix}list-element--list-item--activation--disabled--opacity);
+
+        label {
+          text-decoration: var(--#{variables.$prefix}list-element--list-item--activation--disabled--text-decoration);
+        }
       }
 
-      &-item {
-        &__activation {
-          align-items: var(--#{variables.$prefix}filters-element--filter-item--activation--align-items);
-          column-gap: var(--#{variables.$prefix}filters-element--filter-item--activation--column-gap);
-          cursor: var(--#{variables.$prefix}filters-element--filter-item--activation--cursor);
-          display: flex;
-          font-weight: var(--#{variables.$prefix}filters-element--filter-item--activation--font-weight);
-          justify-content: var(--#{variables.$prefix}filters-element--filter-item--activation--justify-content);
-          padding: var(--#{variables.$prefix}filters-element--filter-item--activation--padding);
-          transition: background-color var(--#{variables.$prefix}transition-speed);
-
-          &[data-vd-visible='false'] {
-            opacity: var(--#{variables.$prefix}list-element--list-item--activation--disabled--opacity);
-
-            label {
-              text-decoration: var(--#{variables.$prefix}list-element--list-item--activation--disabled--text-decoration);
-            }
-          }
-
-          label {
-            flex-grow: 1;
-            line-height: var(--#{variables.$prefix}filters-element--filter-item--activation--line-height);
-            padding: var(--#{variables.$prefix}list-element--list-item--activation--padding);
-            position: relative;
-            transition: background-color var(--#{variables.$prefix}transition-speed);
-          }
-        }
+      label {
+        flex-grow: 1;
+        line-height: var(--#{variables.$prefix}filters-element--filter-item--activation--line-height);
+        padding: var(--#{variables.$prefix}list-element--list-item--activation--padding);
+        position: relative;
+        transition: background-color var(--#{variables.$prefix}transition-speed);
       }
     }
   }
