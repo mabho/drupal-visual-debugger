@@ -992,7 +992,17 @@ export function createControllerPanel(options = {}) {
           scrollRowIntoView(item);
         }
       },
-      setVisible: applyVisible,
+      // Runs for a visibility change from *any* source (this row's own
+      // click, another sub-view's row, a Filters-tab batch toggle, a
+      // direct overlay click) — not just this row's own switch, so
+      // `applyVisible` alone (this row's own visuals) isn't enough; the
+      // owning group's switch needs the same immediate resync. See
+      // `syncGroupSwitchForType`'s doc comment for the "at least one
+      // member visible" semantics this implements.
+      setVisible: (visible) => {
+        applyVisible(visible);
+        syncGroupSwitchForType(themeElement.objectType);
+      },
       remove: () => item.remove(),
     };
 
@@ -1001,12 +1011,15 @@ export function createControllerPanel(options = {}) {
   }
 
   /**
-   * A group's on/off switch is the same kind of pure batch action as a
-   * Filters-tab switch (`applyFilterVisible`) — it always shows the state
-   * you last set it to, and setting it shows/hides every member's
-   * overlay. Deliberately doesn't try to track whether members have since
-   * drifted out of sync via individual row toggles, matching that same
-   * documented philosophy.
+   * A click on a group's own switch is a batch action, same as a
+   * Filters-tab switch (`applyFilterVisible`): it sets every member's
+   * overlay to `visible`. Unlike Filters' switch, though, the checked
+   * state this leaves behind isn't sticky — each member's own
+   * `groupedRow.setVisible` (triggered as a side effect of this same
+   * `overlay.setThemeElementVisible` call, per member) immediately calls
+   * `syncGroupSwitchForType`, so the switch converges to whatever
+   * "at least one member visible" actually reads once every member has
+   * updated, same as any other visibility change would produce.
    *
    * @param {ReturnType<typeof createOnOffSwitch>} groupSwitch
    * @param {import('../model/themeElement.js').ThemeElement[]} members
@@ -1031,9 +1044,13 @@ export function createControllerPanel(options = {}) {
    * switch (see `applyAggregateToAllGroups`) can bulk-collapse/expand
    * every group without a full `rebuildGroupedView`.
    *
-   * The switch's initial checked state is computed from real aggregate
-   * member visibility (`members.every(...)`), never hardcoded `true` —
-   * see `rebuildGroupedView`'s doc comment for why that matters here
+   * The switch's checked state is a live minimum-threshold read of real
+   * member visibility — "on" the instant at least one member is visible,
+   * "off" only once every member is hidden (`members.some(...)` here at
+   * build time; kept in sync afterward by `syncGroupSwitchForType`, which
+   * every member's `groupedRow.setVisible` calls regardless of what
+   * triggered the change). Never hardcoded `true` — see
+   * `rebuildGroupedView`'s doc comment for why that matters here
    * specifically (this group gets torn down and rebuilt on every dynamic
    * content change, unlike a Filters-tab group).
    *
@@ -1083,9 +1100,11 @@ export function createControllerPanel(options = {}) {
     });
 
     applyCollapsed(groupCollapsedByType.get(type) ?? false);
-    groupSectionsByType.set(type, { setCollapsed: applyCollapsed });
 
-    const initialGroupVisible = members.every((themeElement) => overlay?.isThemeElementVisible(themeElement) ?? true);
+    // "At least one visible" (`.some`), not "every member visible"
+    // (`.every`) — see this function's own doc comment for why a
+    // minimum-threshold reading is the correct one here.
+    const initialGroupVisible = members.some((themeElement) => overlay?.isThemeElementVisible(themeElement) ?? true);
     const groupSwitch = createOnOffSwitch({
       label: `${type} - (${members.length})`,
       checked: initialGroupVisible,
@@ -1101,9 +1120,46 @@ export function createControllerPanel(options = {}) {
       applyGroupVisible(groupSwitch, members, !groupSwitch.input.checked);
     });
 
+    // Registered only now that `groupSwitch`/`members` both exist —
+    // `syncGroupSwitchForType` (called from every member's own
+    // `groupedRow.setVisible`, regardless of which row/tab triggered the
+    // change) reads this entry to recompute the switch's live state.
+    groupSectionsByType.set(type, { setCollapsed: applyCollapsed, groupSwitch, members });
+
     header.append(disclosure, groupSwitch.wrapper);
     groupEl.append(header, childrenContainer);
     return groupEl;
+  }
+
+  /**
+   * Recomputes and pushes a group's on/off switch to reflect real,
+   * current member visibility — "at least one member visible" reads
+   * "on"; only once *every* member is hidden does it read "off". Called
+   * from every member's own `groupedRow.setVisible` (see
+   * `generateGroupedItem`), which fires for a visibility change from
+   * *any* source — this row's own click, another sub-view's row, a
+   * Filters-tab batch toggle, or a direct overlay click — not just a
+   * click on this group's own switch, so the group's displayed state
+   * never lags behind what's actually visible on the page.
+   *
+   * Deliberately a minimum-threshold ("some", not "every") reading,
+   * confirmed directly with the user: a group of 5 members reads
+   * "activated" the instant even one becomes visible, and only reads
+   * "deactivated" once the very last visible one is hidden — the same
+   * immediate, no-lag requirement in both directions.
+   *
+   * A no-op if this `type` has no registered group (Grouped sub-view
+   * never built, or this exact rebuild hasn't reached this group yet).
+   *
+   * @param {string} type The `objectType` whose group switch to resync.
+   * @returns {void}
+   */
+  function syncGroupSwitchForType(type) {
+    const section = groupSectionsByType.get(type);
+    if (!section) return;
+    const visible = section.members.some((themeElement) => overlay?.isThemeElementVisible(themeElement) ?? true);
+    section.groupSwitch.setChecked(visible);
+    section.groupSwitch.wrapper.setAttribute(LAYER_ATTRIBUTES.visible, String(visible));
   }
 
   /**
