@@ -429,9 +429,9 @@ $color--shadow: $color--gray;
   --#{$prefix}branched-element--background-color: var(--#{$prefix}list-element--background-color);
   --#{$prefix}branched-element--padding: var(--#{$prefix}controller--gutter);
   --#{$prefix}branched-element--content--gap: calc(var(--#{$prefix}controller--gutter) * .25);
-  --#{$prefix}branched-item--row--gap: calc(var(--#{$prefix}controller--gutter) * .125);
+  --#{$prefix}branched-item--row--gap: calc(var(--#{$prefix}controller--gutter) * .145);
   --#{$prefix}branched-item--children--gap: var(--#{$prefix}branched-item--row--gap);
-  --#{$prefix}branched-item--children--padding-left: calc(var(--#{$prefix}controller--gutter) * 0.4);
+  --#{$prefix}branched-item--children--padding-left: calc(var(--#{$prefix}controller--gutter) * 0.5);
   --#{$prefix}branched-item--children--margin-top: var(--#{$prefix}branched-item--row--gap);
   --#{$prefix}branched-item--disclosure--size: 1.25rem;
   --#{$prefix}branched-item--disclosure--cursor: pointer;
@@ -455,7 +455,7 @@ $color--shadow: $color--gray;
   --#{$prefix}filters-element--filter-item--activation--font-weight: var(--#{$prefix}font-weight--content);
   --#{$prefix}filters-element--filter-item--activation--line-height: 1.5;
   --#{$prefix}filters-element--filter-item--activation--justify-content: space-between;
-  --#{$prefix}filters-element--filter-item--activation--padding: calc(var(--#{$prefix}controller--gutter) * .125) calc(var(--#{$prefix}controller--gutter) * .5);
+  --#{$prefix}filters-element--filter-item--activation--padding: calc(var(--#{$prefix}controller--gutter) * .125) 0;
 }
 
 $object-type-colors: (

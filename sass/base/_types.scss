@@ -26,12 +26,6 @@
   }
 
   .object-type {
-    background-color: rgba(var(--#{variables.$prefix}color--object-type), var(--#{variables.$prefix}object-type--transparency));
-
-    &:hover {
-      background-color: rgba(var(--#{variables.$prefix}color--object-type), var(--#{variables.$prefix}object-type--transparency--hover));
-    }
-
     &.instance-element--checked {
       background-color: rgba(var(--#{variables.$prefix}color--object-type), var(--#{variables.$prefix}object-type--transparency--selected));
     }
