@@ -219,4 +219,8 @@ export const DEFAULTS = {
   initialControllerWidth: '400px',
   controllerDeactivatedGap: 10,
   itemsSubView: 'listed',
+  // How long the copy-to-clipboard button shows its success feedback
+  // (see controllerPanel.js's generateContentCopyData) before reverting
+  // to the plain copy icon.
+  copyFeedbackDuration: 1500,
 };
