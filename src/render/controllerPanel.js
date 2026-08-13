@@ -284,7 +284,9 @@ export function createControllerPanel(options = {}) {
    * etc., is kept exactly as-is on purpose, since existing external CSS
    * and querySelector call sites depend on it; only the rendered label
    * changed — see defaultStrings.js's `tabItems`): a Listed/Branched/
-   * Grouped sub-view switcher, the existing flat Listed view (unchanged
+   * Grouped sub-view switcher, a single shared "All Elements" switch (see
+   * `generateAllElementsRow`) that sits above all three and stays put as
+   * the sub-view changes, the existing flat Listed view (unchanged
    * behavior, via `generateListedSubView`), and the Branched tree/Grouped
    * bucketed views (both built lazily — see `applyItemsSubView`).
    *
@@ -296,6 +298,7 @@ export function createControllerPanel(options = {}) {
     layer.classList.add(CLASS_NAMES.listElement, CLASS_NAMES.navTarget);
 
     const switcher = generateItemsSubViewSwitcher();
+    const allElementsRow = generateAllElementsRow();
 
     // Deliberately NOT `CLASS_NAMES.navTarget` on any sub-view container:
     // `.list__content`/`.branched__content`/`.grouped__content` already
@@ -320,7 +323,7 @@ export function createControllerPanel(options = {}) {
     const groupedContainer = document.createElement('div');
     groupedContainer.classList.add(CLASS_NAMES.groupedElement, CLASS_NAMES.groupedElementContent);
 
-    layer.append(switcher, listedContainer, branchedContainer, groupedContainer);
+    layer.append(switcher, allElementsRow, listedContainer, branchedContainer, groupedContainer);
 
     // Passes `layer` explicitly (not yet attached to `panelRoot`) rather
     // than relying on `applyItemsSubView`'s `panelRoot`-based default —
@@ -328,6 +331,59 @@ export function createControllerPanel(options = {}) {
     applyItemsSubView(storage.get(STORAGE_KEYS.itemsSubView, DEFAULTS.itemsSubView), layer);
 
     return layer;
+  }
+
+  /**
+   * Builds the single "All Elements" on/off switch shared by all three
+   * Items sub-views (Listed/Branched/Grouped) — one real element, built
+   * once and placed directly under the sub-view switcher (see
+   * `generateItemsTab`), rather than one per sub-view: it shows/hides
+   * *every* theme element's overlay at once regardless of which sub-view
+   * happens to be showing, so there's no reason for Listed, Branched, and
+   * Grouped to each carry their own equivalent copy. Sitting outside all
+   * three sub-view content containers also means it survives Branched's/
+   * Grouped's full-`innerHTML`-wipe rebuilds untouched — nothing needs to
+   * remember to re-insert it after a rebuild.
+   *
+   * A pure batch action, same as a group's own switch used to be before
+   * the live-sync fix (see `applyGroupVisible`): always shows the state
+   * you last set it to, doesn't track whether individual elements have
+   * since drifted out of sync — matching this switch's original,
+   * long-standing behavior from when it lived inside the Listed sub-view
+   * alone.
+   *
+   * @returns {Element} The row, not yet attached to the DOM.
+   */
+  function generateAllElementsRow() {
+    const allItem = document.createElement('div');
+    allItem.classList.add(CLASS_NAMES.listElementItemSelectAll);
+
+    // Reuses `listItemActivation`'s styling (a full-width, labeled row),
+    // not `listItemVisibility` (the narrow, icon-only per-row eye toggle)
+    // — the latter has no room for a label and would render cramped here.
+    // Its `[data-vd-list-item-activated='true']` selection-highlight rule
+    // never applies to this switch since nothing ever sets that attribute
+    // on it (it's not a real theme-element row, just a batch action).
+    const allSwitch = createOnOffSwitch({
+      label: strings.allElements,
+      checked: true,
+      wrapperClasses: [CLASS_NAMES.listItemActivation],
+      iconOn: CLASS_NAMES.iconToggleOn,
+      iconOff: CLASS_NAMES.iconToggleOff,
+    });
+
+    allSwitch.wrapper.addEventListener('click', () => {
+      const next = !allSwitch.input.checked;
+      allSwitch.setChecked(next);
+      // `setThemeElementVisible` already calls the affected element's own
+      // `listRow`/`treeRow`/`groupedRow`.setVisible internally (see
+      // overlayLayer.js's `setVisible`) — no separate per-row sync needed
+      // here.
+      themeElements.forEach((themeElement) => overlay?.setThemeElementVisible(themeElement, next));
+    });
+
+    allItem.appendChild(allSwitch.wrapper);
+    return allItem;
   }
 
   /**
@@ -427,8 +483,9 @@ export function createControllerPanel(options = {}) {
 
   /**
    * Builds the Listed sub-view's content: one `generateListItem` row per
-   * theme element, in document order, plus an "All Elements" switch that
-   * shows/hides every element's overlay at once.
+   * theme element, in document order. The "All Elements" switch this used
+   * to prepend here is now shared across all three Items sub-views — see
+   * `generateAllElementsRow`, placed once in `generateItemsTab`.
    *
    * @returns {Element} The Listed sub-view content, not yet attached to the DOM.
    */
@@ -439,36 +496,6 @@ export function createControllerPanel(options = {}) {
     themeElements.forEach((themeElement) => {
       content.appendChild(generateListItem(themeElement));
     });
-
-    const allItem = document.createElement('div');
-    allItem.classList.add(CLASS_NAMES.listElementItemSelectAll);
-
-    // Reuses `listItemActivation`'s styling (a full-width, labeled row),
-    // not `listItemVisibility` (the narrow, icon-only per-row eye toggle)
-    // — the latter has no room for a label and would render cramped here.
-    // Its `[data-vd-list-item-activated='true']` selection-highlight rule
-    // never applies to this switch since nothing ever sets that attribute
-    // on it (it's not a real theme-element row, just a batch action).
-    const allSwitch = createOnOffSwitch({
-      label: strings.allElements,
-      checked: true,
-      wrapperClasses: [CLASS_NAMES.listItemActivation],
-      iconOn: CLASS_NAMES.iconToggleOn,
-      iconOff: CLASS_NAMES.iconToggleOff,
-    });
-
-    allSwitch.wrapper.addEventListener('click', () => {
-      const next = !allSwitch.input.checked;
-      allSwitch.setChecked(next);
-      // `setThemeElementVisible` already calls the affected row's own
-      // `listRow.setVisible` internally (see overlayLayer.js's
-      // `setVisible`) — same as `applyGroupVisible` relies on for the
-      // Grouped sub-view, no separate call needed here.
-      themeElements.forEach((themeElement) => overlay?.setThemeElementVisible(themeElement, next));
-    });
-
-    allItem.appendChild(allSwitch.wrapper);
-    content.prepend(allItem);
 
     return content;
   }

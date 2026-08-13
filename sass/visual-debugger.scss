@@ -373,6 +373,15 @@
           flex: 0 0 28px;
           display: flex;
         }
+
+        // The single "All Elements" switch shared by all three Items
+        // sub-views (see controllerPanel.js's generateAllElementsRow) —
+        // sits directly under the sub-view switcher now, outside any of
+        // the three sub-views' own flex/gap containers, so it needs its
+        // own bottom spacing rather than relying on a parent's `gap`.
+        &--select-all {
+          margin-bottom: var(--#{variables.$prefix}items-subview-switcher--margin-bottom);
+        }
       }
     }
 
