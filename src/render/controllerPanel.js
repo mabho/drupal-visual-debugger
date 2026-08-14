@@ -117,7 +117,10 @@ export function createControllerPanel(options = {}) {
 
   /**
    * Builds a labeled `<input readonly>` + copy-to-clipboard button row,
-   * used for theme suggestions and the template file path.
+   * used for theme suggestions and the template file path. On a
+   * successful copy, the button briefly swaps its icon to
+   * `CLASS_NAMES.iconSelectedTrue` before reverting back to the plain
+   * copy icon.
    *
    * @param {string|null} itemLabel Visible label text, or `null` for none
    *   (e.g. suggestion rows, which use an icon instead of a text label).
@@ -142,7 +145,24 @@ export function createControllerPanel(options = {}) {
 
     clipboardButton.classList.add(CLASS_NAMES.iconCopyToClipboard);
     clipboardButton.setAttribute('aria-label', strings.copyToClipboard);
-    clipboardButton.addEventListener('click', () => clipboardCopy(clipboardContent));
+
+    // Closured per button (one `generateContentCopyData` call per row),
+    // so a second click before the first's feedback has reverted clears
+    // and restarts the timer instead of the two reverts racing each
+    // other (which could otherwise flip the icon back early, or leave
+    // the row's later click with nothing to revert at all).
+    let feedbackTimeoutId = null;
+    clipboardButton.addEventListener('click', () => {
+      clipboardCopy(clipboardContent).then((succeeded) => {
+        if (!succeeded) return;
+        if (feedbackTimeoutId !== null) clearTimeout(feedbackTimeoutId);
+        clipboardButton.classList.replace(CLASS_NAMES.iconCopyToClipboard, CLASS_NAMES.iconSelectedTrue);
+        feedbackTimeoutId = setTimeout(() => {
+          feedbackTimeoutId = null;
+          clipboardButton.classList.replace(CLASS_NAMES.iconSelectedTrue, CLASS_NAMES.iconCopyToClipboard);
+        }, DEFAULTS.copyFeedbackDuration);
+      });
+    });
 
     itemWrapper.append(itemLabelWrapper, clipboardContent, clipboardButton);
     return itemWrapper;
@@ -151,20 +171,23 @@ export function createControllerPanel(options = {}) {
   /**
    * Copies a read-only input's value to the clipboard, preferring the
    * async Clipboard API and falling back to `document.execCommand('copy')`
-   * (via select-and-copy) where it's unavailable.
+   * (via select-and-copy) where it's unavailable. Reports success/failure
+   * back to the caller (see `generateContentCopyData`'s copy-feedback
+   * icon) rather than assuming the copy always worked — both paths can
+   * fail silently depending on the browser/permissions state.
    *
    * @param {Element} contentRefField The `<input readonly>` whose value to copy.
-   * @returns {void}
+   * @returns {Promise<boolean>} Resolves `true` if the copy succeeded.
    */
   function clipboardCopy(contentRefField) {
     const textToCopy = contentRefField.value;
     if (navigator.clipboard) {
-      navigator.clipboard.writeText(textToCopy);
-    } else {
-      contentRefField.select();
-      document.execCommand('copy');
-      contentRefField.focus();
+      return navigator.clipboard.writeText(textToCopy).then(() => true, () => false);
     }
+    contentRefField.select();
+    const succeeded = document.execCommand('copy');
+    contentRefField.focus();
+    return Promise.resolve(succeeded);
   }
 
   /**
