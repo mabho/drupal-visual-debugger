@@ -24,6 +24,27 @@ must be enabled (`services.yml` → `twig.config.debug: true`, or the
 `development.services.yml` override). Without it there are no debug comments
 to parse.
 
+## Code comments
+
+Keep comments short and about the *current* code only. A function/JSDoc
+comment is normally 1–4 lines: what it does, plus any parameter/return
+that isn't obvious from its name. Don't narrate history — no "used to
+hardcode X", "a bug fixed as part of adding Y", "originally Z's own, now
+reused", "confirmed with the user", "matching the original module's
+markup". That belongs in a commit message, not in source — it doesn't
+survive the next change and it isn't useful to a reader who only cares
+what the code does today.
+
+The one thing worth keeping, even at some length, is a genuinely
+non-obvious *why*: an invariant a future edit could silently break (e.g.
+call-order requirements between `overlayLayer.js`'s and
+`controllerPanel.js`'s `removeThemeElement`), a CSS specificity tie
+resolved a specific way, or a platform gotcha (Shadow DOM `url()`
+resolution, `IntersectionObserver` `rootMargin` math for sticky
+tracking). If cutting a comment wouldn't leave a future reader confused
+about why the code is shaped the way it is, cut it. This applies to every
+file here — JS and Sass alike.
+
 ## Commands
 
 ```
