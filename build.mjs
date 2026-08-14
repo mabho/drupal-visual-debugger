@@ -62,13 +62,10 @@ const jsBuilds = [
 ];
 
 // Static weights vendored in fonts/open-sans/ (Google Fonts' "Open Sans
-// Semi Condensed" cut, as downloaded — see README "Open Sans"). Named
-// honestly by their actual OpenType weight: the "Medium" file is 500, not
-// 400 — there is no true Regular/400 cut of this condensed style, so the
-// content font-weight variable in _variables.scss is set to 500 to match
-// rather than mislabeling this face as 400. Italic cuts were also
-// downloaded but aren't embedded — nothing in the panel's UI renders
-// italic text today; add an entry here if that changes.
+// Semi Condensed" cut — see README "Open Sans"). No true Regular/400 cut
+// exists for this condensed style, so _variables.scss's content
+// font-weight is 500 ("Medium") instead. Italic cuts exist but aren't
+// embedded — nothing in the panel renders italic text today.
 const OPEN_SANS_FACES = [
   { file: 'OpenSans_SemiCondensed-Light.ttf', weight: 300 },
   { file: 'OpenSans_SemiCondensed-Medium.ttf', weight: 500 },
@@ -105,31 +102,17 @@ async function buildOpenSansFontFaceCss() {
 
 /**
  * Generates `generated/panelStyles.css` — the styles the controller panel
- * embeds into its own Shadow DOM (see `render/controllerPanel.js`), as
- * opposed to `buildStyles()` below, which produces the standalone
- * `dist/*.css` files consumed by the overlay in the light DOM. Lives in
- * its own top-level `generated/` directory (gitignored, same treatment as
- * `dist/`) rather than under `src/`, which is otherwise all hand-authored.
- * Must run before the esbuild step, since `controllerPanel.js` imports
- * this generated file directly.
+ * embeds into its own Shadow DOM, as opposed to `buildStyles()` below,
+ * which produces the standalone `dist/*.css` for the overlay's light DOM.
+ * Gitignored, like `dist/`. Must run before the esbuild step, since
+ * `controllerPanel.js` imports this file directly.
  *
- * Four pieces get concatenated:
- * 1. `:host { all: initial; }` — resets every inherited CSS property
- *    (including any `--vd-*` custom property a page might set on `:root`)
- *    at the shadow host boundary, so nothing from the host page leaks in
- *    via inheritance (rule-based leakage is already blocked by Shadow DOM
- *    itself, with no extra effort needed).
- * 2. The vendored IcoMoon icon font's CSS, with its `src:` rewritten to a
- *    single base64-embedded `data:` URI. This is necessary, not just
- *    convenient: a relative `url()` inside a `<style>` element resolves
- *    against the *host page's* URL, not this library's, so the icon font
- *    files would 404 if this CSS were copied in unmodified. Only `woff` is
- *    embedded (dropping the ttf/svg fallbacks IcoMoon also ships) — this
- *    project already targets evergreen/es2019 browsers.
- * 3. The vendored Open Sans weights' `@font-face` rules — see
- *    `buildOpenSansFontFaceCss()`.
- * 4. The panel's own compiled CSS (`sass/visual-debugger.scss`,
- *    compressed) — identical source to `dist/visual-debugger.min.css`.
+ * Concatenates: (1) `:host { all: initial; }`, resetting inherited CSS at
+ * the shadow boundary; (2) the vendored IcoMoon icon font CSS with its
+ * `src:` rewritten to a base64 `data:` URI (a relative `url()` in an
+ * injected `<style>` resolves against the host page, not this library);
+ * (3) the Open Sans `@font-face` rules (`buildOpenSansFontFaceCss()`);
+ * (4) the panel's own compiled CSS.
  *
  * @returns {Promise<void>}
  */
@@ -165,12 +148,10 @@ async function buildPanelStyles() {
 }
 
 /**
- * Prepends `BANNER` to compiled CSS, keeping an accompanying sourcemap
- * (if any) correctly aligned: every line the banner adds needs one
- * matching empty ("no mapping here") entry prepended to the sourcemap's
- * `mappings` string, in Source Map v3 that's one `;` per generated line —
- * otherwise every mapped position would end up pointing however many
- * lines the banner is too high once it pushes the real content down.
+ * Prepends `BANNER` to compiled CSS, keeping any sourcemap aligned: each
+ * line the banner adds needs one empty `;` entry prepended to the
+ * sourcemap's `mappings` string (Source Map v3), or every mapped position
+ * ends up off by however many lines the banner pushed the content down.
  *
  * @param {string} css Compiled CSS, banner-free.
  * @param {object} [sourceMap] The sourcemap `sass.compile()` produced for
@@ -208,21 +189,13 @@ function buildStyles() {
   });
   writeFileSync('dist/visual-debugger.min.css', prependCssBanner(cssMinResult.css).css);
 
-  // The icon font (fonts/visual-debugger-icons/) is a vendored IcoMoon
-  // package. Its .scss uses legacy @import + unnamespaced variable
-  // overrides (the pre-@use way of parameterizing a partial), which isn't
-  // worth adapting to this project's @use-based Dart Sass setup just to
-  // re-emit the same handful of @font-face/content rules IcoMoon already
-  // compiled. So instead of feeding its .scss into the Sass compile above,
-  // we copy its precompiled style.css over as-is. See README "Icon font".
-  // Deliberately *not* banner-stamped — it's a verbatim third-party copy,
-  // not something this project compiled, and stamping it with our own
-  // version would misattribute it.
+  // The vendored IcoMoon icon font's .scss uses legacy @import, not worth
+  // adapting to this project's @use setup — copy its precompiled CSS
+  // as-is instead (see README "Icon font"). Not banner-stamped: it's a
+  // verbatim third-party copy.
   cpSync('fonts/visual-debugger-icons/style.css', 'dist/visual-debugger.fonts.css');
 
-  // Copy the icon font binaries alongside the compiled CSS — both
-  // visual-debugger.fonts.css's and the IcoMoon demo's @font-face src URLs
-  // are relative, e.g. "fonts/visual-debugger-icons.ttf".
+  // Its @font-face src URLs are relative (e.g. "fonts/visual-debugger-icons.ttf").
   cpSync('fonts/visual-debugger-icons/fonts', 'dist/fonts', { recursive: true });
 }
 

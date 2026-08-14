@@ -2,20 +2,17 @@ import { createEmptyThemeElement } from '../model/themeElement.js';
 import { LAYER_ATTRIBUTES } from '../constants.js';
 
 /**
- * This is the one part of the library that is genuinely Drupal-specific:
- * it reads the HTML comments Drupal's Twig debug output writes into the
- * page (THEME DEBUG / THEME HOOK / FILE NAME SUGGESTIONS / BEGIN OUTPUT).
- * The renderer that consumes its output (see render/) has no idea where
- * the data came from.
+ * The one part of the library that is genuinely Drupal-specific: reads
+ * the HTML comments Drupal's Twig debug output writes into the page
+ * (THEME DEBUG / THEME HOOK / FILE NAME SUGGESTIONS / BEGIN OUTPUT). The
+ * renderer that consumes its output (see render/) has no idea where the
+ * data came from.
  *
- * Requirement: the page must have Twig debugging enabled
- * (services.yml -> twig.config.debug: true) or there is nothing to parse.
+ * Requires Twig debugging enabled (services.yml -> twig.config.debug: true).
  *
- * Regexes below are written as real regex literals rather than built from
- * strings, to avoid a subtle bug in the original module: a
- * `new RegExp("...\\s*\\n\\s*...")`-style string with single backslashes
- * silently drops the `\s` escape (it's not a recognized string escape), so
- * the resulting pattern quietly stops matching whitespace as intended.
+ * Regexes below are real regex literals, not built from strings — a
+ * `new RegExp("...\\s*\\n\\s*...")` string with single backslashes
+ * silently drops the `\s` escape, since it's not a recognized string escape.
  */
 
 const RE_THEME_DEBUG = /THEME DEBUG/;
@@ -34,41 +31,27 @@ const RE_TEMPLATE_END_OUTPUT = /END(?: CUSTOM TEMPLATE)? OUTPUT from '([^']*)'/;
  * Walks every comment node under `root` and builds one ThemeElement per
  * "THEME DEBUG ... BEGIN OUTPUT" block that resolves to a real DOM element.
  *
- * Implementation note: uses a `TreeWalker` filtered to `SHOW_COMMENT`
- * rather than `root.querySelectorAll('*')` + inspecting every element's
- * `childNodes`. The `whatToShow` filter is native — the browser skips
- * non-comment nodes without invoking any JS — so this never materializes
- * a collection of every element/child node in the subtree the way the
- * querySelectorAll approach did, and it correctly finds comments that are
- * direct children of `root` itself (querySelectorAll('*') never includes
- * `root`, so a top-level comment would've been silently missed).
+ * Uses a `TreeWalker` filtered to `SHOW_COMMENT` rather than
+ * `querySelectorAll('*')` + inspecting `childNodes`: the native
+ * `whatToShow` filter skips non-comment nodes without materializing a
+ * full element collection, and correctly finds comments that are direct
+ * children of `root` itself (which `querySelectorAll('*')` never includes).
  *
  * Each comment is tested against the module-level regexes in turn;
- * matching `THEME DEBUG` flips on an `activated` flag that gates all
- * subsequent matches until a `BEGIN OUTPUT` comment is found (successful or
- * not — see `drupalThemeDebugParser.js`'s file-level comment for why both
- * `BEGIN OUTPUT` and `BEGIN CUSTOM TEMPLATE OUTPUT` must match), at which
- * point the in-progress `current` element is either pushed (if it resolved
- * to a real DOM element) or discarded, and scanning resets for the next
- * block.
+ * matching `THEME DEBUG` gates all subsequent matches until a
+ * `BEGIN OUTPUT` comment is found, at which point `current` is pushed (if
+ * it resolved to a real element) or discarded, and scanning resets.
  *
- * Safe to call more than once against the same (or an overlapping) `root`
- * — any element already matched by a previous call (tracked via the
- * `LAYER_ATTRIBUTES.layerId` attribute stamped onto it below) is skipped
- * rather than re-matched, so a repeat call only ever returns elements that
- * weren't already tracked. This is what makes whole-root rescanning (as
- * opposed to trying to scope a scan to just what changed) a viable
- * strategy for picking up dynamically-added content — see `index.js`'s
- * `reconcileDynamicContent`.
+ * Safe to call repeatedly on the same (or overlapping) `root` — elements
+ * already matched (tracked via `LAYER_ATTRIBUTES.layerId`) are skipped,
+ * so whole-root rescanning works for picking up dynamic content (see
+ * `index.js`'s `reconcileDynamicContent`).
  *
  * @param {Element} [root] Root element to scan for theme debug comments.
- *   Defaults to `document.body`. Comments outside of `root` (e.g. in
- *   `<head>`) are not seen.
+ *   Defaults to `document.body`.
  * @returns {import('../model/themeElement.js').ThemeElement[]} One entry
- *   per newly-matched "THEME DEBUG ... BEGIN OUTPUT" block, in document
- *   order. Blocks that never resolved to a real DOM element (no matching
- *   `BEGIN OUTPUT`, no element immediately following it, or an element
- *   already matched by a previous call) are omitted.
+ *   per newly-matched block, in document order. Blocks that never
+ *   resolved to a real DOM element are omitted.
  */
 export function parseThemeDebugElements(root = document.body) {
   const themeElements = [];
@@ -119,13 +102,9 @@ export function parseThemeDebugElements(root = document.body) {
       current.filePath = filePathMatch[1];
 
       const dataNode = child.nextElementSibling;
-      // Guards against re-matching an element a previous call to this
-      // function already claimed — without it, calling this function
-      // again on a `root` that still contains earlier matches (as
-      // dynamic-content reconciliation does, rescanning the whole root
-      // rather than trying to scope to just what changed) would re-stamp
-      // a new random `id` and push a duplicate ThemeElement for the same
-      // DOM node every time.
+      // Guards against re-matching an element a previous call already
+      // claimed, which would otherwise push a duplicate ThemeElement
+      // every time `root` is rescanned.
       const alreadyMatched = dataNode?.hasAttribute(LAYER_ATTRIBUTES.layerId);
 
       if (dataNode && dataNode.nodeType === Node.ELEMENT_NODE && !alreadyMatched) {
@@ -147,12 +126,10 @@ export function parseThemeDebugElements(root = document.body) {
 }
 
 /**
- * Utility: unique, sorted list of theme hooks found on the page. Useful for
- * an "Aggregate by type" view (see the module's roadmap).
+ * Unique, sorted list of theme hooks found on the page.
  *
  * @param {import('../model/themeElement.js').ThemeElement[]} themeElements
- *   Theme elements to collect hooks from, typically the array returned by
- *   {@link parseThemeDebugElements}.
+ *   Typically the array returned by {@link parseThemeDebugElements}.
  * @returns {string[]} Alphabetically sorted list of distinct
  *   `propertyHook` values (e.g. `['block__system_branding_block', 'node__article']`).
  */

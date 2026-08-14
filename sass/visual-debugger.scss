@@ -12,12 +12,9 @@
   margin-bottom: calc(var(--#{variables.$prefix}controller--gutter) * .75);
 }
 
-// Shared by Branched's and Grouped's disclosure controls (`.branched-item__disclosure`/
-// `.grouped-item__disclosure`) — the box/alignment styling is ancestor-independent
-// and freely shareable; kept as placeholders rather than a shared class since each
-// view's own `--collapsed`-scoped rotation-reset override still has to be written
-// once per view regardless (it's inherently scoped to that view's own collapsed
-// marker class).
+// Shared by Branched's and Grouped's disclosure controls. Placeholders,
+// not a shared class, since each view's `--collapsed` rotation-reset is
+// scoped to its own collapsed marker class either way.
 %disclosure-box {
   flex: 0 0 var(--#{variables.$prefix}branched-item--disclosure--size);
   line-height: 1;
@@ -295,14 +292,9 @@
       background-color: var(--#{variables.$prefix}list-element--background-color);
       padding: var(--#{variables.$prefix}list-element--padding);
 
-      // Items tab's Listed/Branched sub-view switcher shows/hides this
-      // and `.branched__content` by toggling `active` — `:not(.active)`
-      // here deliberately outranks the unconditional `display: flex`
-      // just below by specificity (a class + a pseudo-class vs. a bare
-      // class), rather than relying on `.nav-target`'s same-specificity
-      // `display: none` winning a source-order tie it doesn't actually
-      // win (see controllerPanel.js's `generateItemsTab` for the bug this
-      // replaced).
+      // `:not(.active)` outranks the unconditional `display: flex` below
+      // by specificity, rather than relying on `.nav-target`'s same-
+      // specificity `display: none` to win a source-order tie.
       &__content:not(.active) {
         display: none;
       }
@@ -330,10 +322,8 @@
           flex-direction: row;
           font-weight: var(--#{variables.$prefix}list-element--list-item--activation--font-weight);
           line-height: inherit;
-          // Flex items default to `min-width: auto` (i.e. never shrink
-          // below their content's natural width) — overriding it here is
-          // what lets the label below actually shrink/ellipsis instead
-          // of pushing `.list-item__visibility` off-screen.
+          // Overrides flex's default `min-width: auto` so the label can
+          // shrink/ellipsis instead of pushing `.list-item__visibility` off-screen.
           min-width: 0;
 
           &[data-vd-visible='false'] {
@@ -374,11 +364,9 @@
           display: flex;
         }
 
-        // The single "All Elements" switch shared by all three Items
-        // sub-views (see controllerPanel.js's generateAllElementsRow) —
-        // sits directly under the sub-view switcher now, outside any of
-        // the three sub-views' own flex/gap containers, so it needs its
-        // own bottom spacing rather than relying on a parent's `gap`.
+        // The shared "All Elements" switch (generateAllElementsRow) sits
+        // outside the sub-views' own flex/gap containers, so needs its
+        // own bottom spacing.
         &--select-all {
           margin-bottom: var(--#{variables.$prefix}items-subview-switcher--margin-bottom);
         }
@@ -431,24 +419,16 @@
           column-gap: var(--#{variables.$prefix}branched-item--row--gap);
           display: flex;
 
-          // Reuses the List tab's own activation/visibility switch
-          // styling verbatim (see buildRowControls in controllerPanel.js)
-          // — only this row wrapper and the disclosure/children below are
-          // new, tree-specific markup.
+          // Reuses the List tab's activation/visibility switch styling
+          // verbatim (see buildRowControls in controllerPanel.js).
           .list-item__activation {
             flex: 1;
           }
         }
 
-        // The glyph itself (Icomoon's `icon-navigate-next`/`icon-minus`)
-        // comes from `_icons.scss`'s shared `[class^="icon-"]` rule plus
-        // the vendored font's own `:before` content — this just handles
-        // the disclosure slot's box/alignment (shared by the real
-        // `<button>` and the childless-row `<span>` placeholder alike, so
-        // both reserve the exact same column width) plus the interactive
-        // button's own cursor/rotation (scoped to the `button` tag
-        // specifically, so the inert placeholder `<span>` doesn't
-        // misleadingly look clickable or inherit rotation it never uses).
+        // Box/alignment shared by the real `<button>` and the childless
+        // `<span>` placeholder (same column width); cursor/rotation
+        // scoped to `button` only, so the placeholder doesn't look clickable.
         &__disclosure {
           @extend %disclosure-box;
 
@@ -495,11 +475,7 @@
         gap: var(--#{variables.$prefix}grouped-element--content--gap);
       }
 
-      // The global "Aggregate" collapse-all/expand-all switch. Its own
-      // switch markup reuses `.list-item__activation` verbatim (see the
-      // "All Elements" switch in controllerPanel.js's
-      // generateListedSubView) — only this row's separation from the
-      // group list below is new.
+      // Aggregate collapse-all/expand-all switch (reuses `.list-item__activation`).
       &__aggregate {
         border-bottom: var(--#{variables.$prefix}grouped-aggregate--border-bottom);
         margin-bottom: var(--#{variables.$prefix}grouped-aggregate--margin-bottom);
@@ -512,18 +488,15 @@
           column-gap: var(--#{variables.$prefix}branched-item--row--gap);
           display: flex;
 
-          // Reuses the shared per-type switch styling verbatim (see
-          // `.filters-item__activation` below and generateGroupSection)
-          // — only this header wrapper and the disclosure/children below
-          // are new, Grouped-specific markup.
+          // Reuses the shared per-type switch styling (see
+          // `.filters-item__activation` below).
           .filters-item__activation {
             flex: 1;
           }
         }
 
-        // Every Grouped disclosure is a real `<button>` — a group only
-        // exists while it has at least one member, so there's no
-        // Branched-style childless-leaf placeholder case to handle here.
+        // Every Grouped disclosure is a real `<button>` (a group always
+        // has ≥1 member, unlike Branched's childless-leaf case).
         &__disclosure {
           @extend %disclosure-box;
           @extend %disclosure-interactive;
@@ -550,12 +523,8 @@
       }
     }
 
-    // Shared per-type on/off switch styling — originally the Filters
-    // tab's own (that tab has been removed entirely); kept as its own
-    // top-level rule, not nested under a tab-specific wrapper, because
-    // the Items tab's Grouped sub-view still reuses this exact class
-    // verbatim for its own group switches (see `.grouped-item__header`
-    // above and generateGroupSection).
+    // Shared per-type on/off switch styling, reused by the Grouped
+    // sub-view's group switches (see `.grouped-item__header` above).
     .filters-item__activation {
       align-items: var(--#{variables.$prefix}filters-element--filter-item--activation--align-items);
       column-gap: var(--#{variables.$prefix}filters-element--filter-item--activation--column-gap);

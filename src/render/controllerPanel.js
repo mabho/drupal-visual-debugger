@@ -2,13 +2,9 @@ import { CLASS_NAMES, IDS, LAYER_ATTRIBUTES, STORAGE_KEYS, DEFAULTS } from '../c
 import { webStorageAdapter } from '../storage/webStorageAdapter.js';
 import { defaultStrings } from '../i18n/defaultStrings.js';
 import { createOnOffSwitch } from './onOffSwitch.js';
-// Generated at build time by build.mjs's buildPanelStyles() into the
-// package-root generated/ directory (gitignored, kept out of src/ since
-// everything else here is hand-authored) — the panel's own compiled CSS
-// plus self-contained (base64-embedded font) copies of the icon font and
-// Open Sans, concatenated. Not authored directly; see that function's doc
-// comment for why the panel needs its own copies instead of relying on
-// the standalone dist/*.css files the overlay uses.
+// Generated at build time (build.mjs's buildPanelStyles(), gitignored) —
+// the panel's compiled CSS plus base64-embedded icon font/Open Sans, for
+// the panel's Shadow DOM (separate from the overlay's dist/*.css copies).
 import panelStyles from '../../generated/panelStyles.css';
 
 /**
@@ -17,9 +13,8 @@ import panelStyles from '../../generated/panelStyles.css';
  * element info, theme suggestions, template file path, and the
  * click-drag resize handle.
  *
- * This is a factory, not a singleton — each call returns an independent
- * instance with its own closured state, unlike the original
- * Drupal.controllerElement object literal.
+ * A factory, not a singleton — each call returns an independent instance
+ * with its own closured state.
  *
  * @param {object} [options]
  * @param {import('../storage/webStorageAdapter.js').StorageAdapter} [options.storage]
@@ -43,57 +38,32 @@ export function createControllerPanel(options = {}) {
 
   let activeThemeElement = null;
   let defaultThemeElement = null;
-  // The panel's own styled root — carries all the visual-debugger--*
-  // classes/attributes/inline positioning styles, exactly as it did before
-  // the panel moved behind a Shadow DOM boundary. Every other function in
-  // this file that queries/styles "the panel" operates on this, not on
-  // panelHost — querying a subtree works the same whether or not that
-  // subtree happens to live inside a shadow root.
+  // The panel's styled root, inside the shadow root — every function here
+  // that queries/styles "the panel" operates on this, not panelHost.
   let panelRoot = null;
-  // The light-DOM element actually appended to the document (see
-  // generateControllerLayer): a bare host with no meaningful classes,
-  // owning the shadow root that panelRoot lives in. Exposed externally as
-  // `controllerLayer` (see the returned getter at the bottom of this
-  // file) — that name describes the public contract ("append this"), not
-  // this variable.
+  // The light-DOM element appended to the document; owns the shadow root
+  // panelRoot lives in. Exposed externally as `controllerLayer`.
   let panelHost = null;
-  // Named handler references (rather than inline arrow functions) so
-  // destroy() can removeEventListener() them — these are registered on
-  // `document`, which outlives the panel, so they'd otherwise keep this
-  // whole closure alive indefinitely. Assigned once in generateSliderButton().
+  // Named handlers (not inline arrows) so destroy() can removeEventListener
+  // them — registered on `document`, which outlives the panel. Assigned in
+  // generateSliderButton().
   let handleSliderMouseMove = null;
   let handleSliderMouseUp = null;
-  // The observer created in observeBodyOffset(), lifted here so destroy()
-  // can disconnect it — it watches document.body, not anything this panel
-  // owns/removes itself.
+  // Watches document.body; disconnected in destroy().
   let bodyOffsetObserver = null;
-  // Items tab's Branched sub-view state. `collapsedById` tracks each
-  // node's collapsed/expanded state independent of the DOM, keyed by
-  // `themeElement.id` (parser-assigned once, stable for that object's
-  // whole lifetime) so it survives `rebuildBranchedView`'s full rebuilds;
-  // no entry means expanded (the default for a never-toggled node).
-  // Entries are deleted in `removeThemeElement` so a long-running,
-  // AJAX-heavy page doesn't leak entries for elements that no longer
-  // exist. `branchedViewBuilt`/`branchedViewDirty`/
-  // `branchedRefreshScheduled` are read/set by `applyItemsSubView`/
-  // `rebuildBranchedView`/`scheduleBranchedRefresh` — see each.
+  // Branched sub-view state. `collapsedById` (keyed by `themeElement.id`)
+  // tracks collapse state across `rebuildBranchedView`'s full rebuilds; no
+  // entry means expanded. Entries are deleted in `removeThemeElement`.
   let collapsedById = new Map();
   let branchedViewBuilt = false;
   let branchedViewDirty = false;
   let branchedRefreshScheduled = false;
-  // Items tab's Grouped sub-view state — mirrors Branched's own state
-  // above, plus pieces specific to bucketed groups and the global
-  // Aggregate switch (see rebuildGroupedView/generateGroupSection/
-  // applyAggregateToAllGroups for how each is used). `groupCollapsedByType`
-  // is keyed by `objectType` (not element id — groups are per-type), not
-  // shared with `collapsedById`. `groupSectionsByType` and
-  // `currentGroupTypes` are rebuilt fresh every `rebuildGroupedView` call
-  // (groups are torn down and recreated wholesale each time), but need to
-  // survive the interactions *between* rebuilds — an individual
-  // disclosure toggle or an Aggregate-switch click, neither of which
-  // triggers a full rebuild. `aggregateSwitchControl` is the Aggregate
-  // switch's own `createOnOffSwitch` return value, recreated each rebuild
-  // alongside it.
+  // Grouped sub-view state, mirroring Branched's above. `groupCollapsedByType`
+  // is keyed by `objectType` (groups are per-type, not per-element).
+  // `groupSectionsByType`/`currentGroupTypes` are rebuilt fresh each
+  // `rebuildGroupedView` call but must survive individual disclosure
+  // toggles and Aggregate-switch clicks between rebuilds.
+  // `aggregateSwitchControl` is the Aggregate switch's own on/off control.
   let groupCollapsedByType = new Map();
   let groupedViewBuilt = false;
   let groupedViewDirty = false;
@@ -118,17 +88,13 @@ export function createControllerPanel(options = {}) {
   /**
    * Builds a labeled `<input readonly>` + copy-to-clipboard button row,
    * used for theme suggestions and the template file path. On a
-   * successful copy, the button briefly swaps its icon to
-   * `CLASS_NAMES.iconSelectedTrue` before reverting back to the plain
-   * copy icon.
+   * successful copy, briefly swaps the button's icon to
+   * `CLASS_NAMES.iconSelectedTrue`, then reverts.
    *
-   * @param {string|null} itemLabel Visible label text, or `null` for none
-   *   (e.g. suggestion rows, which use an icon instead of a text label).
-   * @param {string} itemLabelClass Class added to the label wrapper —
-   *   either a text-label style class or an icon class when `itemLabel` is
-   *   `null`.
-   * @param {string} itemContent The value shown in the (read-only) input
-   *   and copied to the clipboard on click.
+   * @param {string|null} itemLabel Visible label, or `null` (e.g.
+   *   suggestion rows use an icon instead).
+   * @param {string} itemLabelClass Class for the label wrapper.
+   * @param {string} itemContent Value shown in the input and copied.
    * @returns {Element} The row wrapper, not yet attached to the DOM.
    */
   function generateContentCopyData(itemLabel, itemLabelClass, itemContent) {
@@ -146,11 +112,8 @@ export function createControllerPanel(options = {}) {
     clipboardButton.classList.add(CLASS_NAMES.iconCopyToClipboard);
     clipboardButton.setAttribute('aria-label', strings.copyToClipboard);
 
-    // Closured per button (one `generateContentCopyData` call per row),
-    // so a second click before the first's feedback has reverted clears
-    // and restarts the timer instead of the two reverts racing each
-    // other (which could otherwise flip the icon back early, or leave
-    // the row's later click with nothing to revert at all).
+    // Closured per button so a second click restarts the revert timer
+    // instead of racing the first.
     let feedbackTimeoutId = null;
     clipboardButton.addEventListener('click', () => {
       clipboardCopy(clipboardContent).then((succeeded) => {
@@ -169,12 +132,8 @@ export function createControllerPanel(options = {}) {
   }
 
   /**
-   * Copies a read-only input's value to the clipboard, preferring the
-   * async Clipboard API and falling back to `document.execCommand('copy')`
-   * (via select-and-copy) where it's unavailable. Reports success/failure
-   * back to the caller (see `generateContentCopyData`'s copy-feedback
-   * icon) rather than assuming the copy always worked — both paths can
-   * fail silently depending on the browser/permissions state.
+   * Copies a read-only input's value to the clipboard: the async
+   * Clipboard API where available, else `document.execCommand('copy')`.
    *
    * @param {Element} contentRefField The `<input readonly>` whose value to copy.
    * @returns {Promise<boolean>} Resolves `true` if the copy succeeded.
@@ -302,16 +261,12 @@ export function createControllerPanel(options = {}) {
   }
 
   /**
-   * Builds the "Items" tab (formerly labeled "List" — the internal DOM
-   * vocabulary, `IDS.controllerElementList`/`CLASS_NAMES.listElement`/
-   * etc., is kept exactly as-is on purpose, since existing external CSS
-   * and querySelector call sites depend on it; only the rendered label
-   * changed — see defaultStrings.js's `tabItems`): a Listed/Branched/
-   * Grouped sub-view switcher, a single shared "All Elements" switch (see
-   * `generateAllElementsRow`) that sits above all three and stays put as
-   * the sub-view changes, the existing flat Listed view (unchanged
-   * behavior, via `generateListedSubView`), and the Branched tree/Grouped
-   * bucketed views (both built lazily — see `applyItemsSubView`).
+   * Builds the "Items" tab (internal DOM vocabulary — `CLASS_NAMES.listElement`
+   * etc. — stays as-is even though the rendered label is "Items"; see
+   * `tabItems`): the Listed/Branched/Grouped sub-view switcher, a shared
+   * "All Elements" switch above all three (`generateAllElementsRow`), the
+   * Listed view, and the Branched/Grouped views (built lazily — see
+   * `applyItemsSubView`).
    *
    * @returns {Element} The Items tab panel, not yet attached to the DOM.
    */
@@ -323,34 +278,21 @@ export function createControllerPanel(options = {}) {
     const switcher = generateItemsSubViewSwitcher();
     const allElementsRow = generateAllElementsRow();
 
-    // Deliberately NOT `CLASS_NAMES.navTarget` on any sub-view container:
-    // `.list__content`/`.branched__content`/`.grouped__content` already
-    // carry their own unconditional `display: flex` rule (for their own
-    // internal layout), at the same specificity as `.nav-target`'s
-    // `display: none` — a tie those rules always won (they compile later
-    // in the stylesheet), so the sub-view that should've been hidden
-    // never actually was, regardless of which had the `active` class. See
-    // the dedicated `:not(.active)` SCSS rules instead, which
-    // unambiguously outrank the plain `display: flex` rule by specificity
-    // rather than relying on source order.
+    // Not `CLASS_NAMES.navTarget` on the sub-view containers: their own
+    // `__content` rules already set `display: flex` at the same
+    // specificity as `.nav-target`'s `display: none`, so which one wins
+    // isn't guaranteed — see the `:not(.active)` SCSS rules instead.
     const listedContainer = generateListedSubView();
 
     const branchedContainer = document.createElement('div');
     branchedContainer.classList.add(CLASS_NAMES.branchedElementContent);
 
-    // Unlike `branchedContainer` above, actually carries `groupedElement`
-    // (`.grouped`'s background-color/padding) alongside
-    // `groupedElementContent` — `CLASS_NAMES.branchedElement` is declared
-    // but never applied anywhere, leaving its own SCSS rule dead; this
-    // doesn't repeat that omission.
     const groupedContainer = document.createElement('div');
     groupedContainer.classList.add(CLASS_NAMES.groupedElement, CLASS_NAMES.groupedElementContent);
 
     layer.append(switcher, allElementsRow, listedContainer, branchedContainer, groupedContainer);
 
-    // Passes `layer` explicitly (not yet attached to `panelRoot`) rather
-    // than relying on `applyItemsSubView`'s `panelRoot`-based default —
-    // see that function's own doc comment for why.
+    // Passed explicitly since `layer` isn't attached to `panelRoot` yet.
     applyItemsSubView(storage.get(STORAGE_KEYS.itemsSubView, DEFAULTS.itemsSubView), layer);
 
     return layer;
@@ -358,22 +300,12 @@ export function createControllerPanel(options = {}) {
 
   /**
    * Builds the single "All Elements" on/off switch shared by all three
-   * Items sub-views (Listed/Branched/Grouped) — one real element, built
-   * once and placed directly under the sub-view switcher (see
-   * `generateItemsTab`), rather than one per sub-view: it shows/hides
-   * *every* theme element's overlay at once regardless of which sub-view
-   * happens to be showing, so there's no reason for Listed, Branched, and
-   * Grouped to each carry their own equivalent copy. Sitting outside all
-   * three sub-view content containers also means it survives Branched's/
-   * Grouped's full-`innerHTML`-wipe rebuilds untouched — nothing needs to
-   * remember to re-insert it after a rebuild.
+   * Items sub-views — one element, placed once under the sub-view
+   * switcher (see `generateItemsTab`), outside the sub-views' own content
+   * containers so it survives Branched's/Grouped's rebuilds untouched.
    *
-   * A pure batch action, same as a group's own switch used to be before
-   * the live-sync fix (see `applyGroupVisible`): always shows the state
-   * you last set it to, doesn't track whether individual elements have
-   * since drifted out of sync — matching this switch's original,
-   * long-standing behavior from when it lived inside the Listed sub-view
-   * alone.
+   * A pure batch action: always shows the state you last set it to,
+   * doesn't track individual elements drifting out of sync.
    *
    * @returns {Element} The row, not yet attached to the DOM.
    */
@@ -381,12 +313,8 @@ export function createControllerPanel(options = {}) {
     const allItem = document.createElement('div');
     allItem.classList.add(CLASS_NAMES.listElementItemSelectAll);
 
-    // Reuses `listItemActivation`'s styling (a full-width, labeled row),
-    // not `listItemVisibility` (the narrow, icon-only per-row eye toggle)
-    // — the latter has no room for a label and would render cramped here.
-    // Its `[data-vd-list-item-activated='true']` selection-highlight rule
-    // never applies to this switch since nothing ever sets that attribute
-    // on it (it's not a real theme-element row, just a batch action).
+    // Reuses `listItemActivation`'s styling (full-width, labeled), not
+    // the narrow icon-only `listItemVisibility`.
     const allSwitch = createOnOffSwitch({
       label: strings.allElements,
       checked: true,
@@ -398,10 +326,6 @@ export function createControllerPanel(options = {}) {
     allSwitch.wrapper.addEventListener('click', () => {
       const next = !allSwitch.input.checked;
       allSwitch.setChecked(next);
-      // `setThemeElementVisible` already calls the affected element's own
-      // `listRow`/`treeRow`/`groupedRow`.setVisible internally (see
-      // overlayLayer.js's `setVisible`) — no separate per-row sync needed
-      // here.
       themeElements.forEach((themeElement) => overlay?.setThemeElementVisible(themeElement, next));
     });
 
@@ -410,23 +334,10 @@ export function createControllerPanel(options = {}) {
   }
 
   /**
-   * Builds the activation ("select/deselect", labeled with the theme hook)
-   * and visibility ("show/hide") switches shared by all three Items
-   * sub-views' rows (Listed's `generateListItem`, Branched's
-   * `generateTreeItem`, Grouped's `generateGroupedItem`), plus the
-   * `applyVisible` sync function each registers as its row's
-   * `listRow.setVisible`/`treeRow.setVisible`/`groupedRow.setVisible`.
-   * Parameterized on real
-   * current state rather than hardcoding it — a latent bug fixed as part
-   * of adding the Branched sub-view: both switches used to hardcode their
-   * initial checked/visible state regardless of the element's actual
-   * current selection/visibility, harmless while rows were rarely
-   * rebuilt after construction, but very visible once Branched started
-   * fully rebuilding rows on every dynamic content change (a rebuilt row
-   * for an already-selected or already-hidden element would silently show
-   * the wrong state — worse, a hidden element's row would become
-   * clickable/selectable again, since the activation click handler gates
-   * on this same `visible` attribute).
+   * Builds the activation (select/deselect) and visibility (show/hide)
+   * switches shared by all three Items sub-views' rows, plus the
+   * `applyVisible` sync function each registers as
+   * `listRow`/`treeRow`/`groupedRow`.setVisible.
    *
    * @param {import('../model/themeElement.js').ThemeElement} themeElement
    *   The theme element this row represents.
@@ -436,14 +347,10 @@ export function createControllerPanel(options = {}) {
    * @param {boolean} options.initialVisible Real current visibility state
    *   — pass `overlay?.isThemeElementVisible(themeElement) ?? true`.
    * @param {(visible: boolean) => void} [options.onVisibilityToggled]
-   *   Extra effect run after the visibility switch's own click applies
+   *   Run after the visibility switch's own click applies
    *   `overlay.setThemeElementVisible` — Branched rows use this to
-   *   cascade the change to every descendant (see `generateTreeItem`);
-   *   Listed rows, which have no descendants, leave it unset. Never
-   *   called from `applyVisible` itself (only from a real user click) —
-   *   `applyVisible` is a passive state-sync path, not a trigger point,
-   *   so an externally-driven sync (e.g. another sub-view hiding this row)
-   *   doesn't redundantly re-cascade.
+   *   cascade to descendants; only from a real click, never from a
+   *   passive `applyVisible` sync.
    * @returns {{
    *   activation: ReturnType<typeof createOnOffSwitch>,
    *   visibility: ReturnType<typeof createOnOffSwitch>,
@@ -479,11 +386,9 @@ export function createControllerPanel(options = {}) {
     });
 
     /**
-     * Syncs this row's own visibility switch + disabled look, without
-     * touching the overlay — used both by this row's own click (which also
-     * tells the overlay) and by listRow/treeRow.setVisible (called BY the
-     * overlay when visibility changes elsewhere, e.g. another sub-view's
-     * row for the same element).
+     * Syncs this row's visibility switch + disabled look, without
+     * touching the overlay — used by this row's own click and by
+     * listRow/treeRow/groupedRow.setVisible.
      *
      * @param {boolean} visible New visibility state to reflect.
      * @returns {void}
@@ -506,9 +411,7 @@ export function createControllerPanel(options = {}) {
 
   /**
    * Builds the Listed sub-view's content: one `generateListItem` row per
-   * theme element, in document order. The "All Elements" switch this used
-   * to prepend here is now shared across all three Items sub-views — see
-   * `generateAllElementsRow`, placed once in `generateItemsTab`.
+   * theme element, in document order.
    *
    * @returns {Element} The Listed sub-view content, not yet attached to the DOM.
    */
@@ -525,14 +428,9 @@ export function createControllerPanel(options = {}) {
 
   /**
    * Builds one Listed-sub-view row for a single theme element, via
-   * `buildRowControls` (no cascade hook — a flat row has no descendants).
-   * Registers `themeElement.listRow` so the overlay engine (selection/
-   * visibility changes originating anywhere — another sub-view's row, a
-   * batch toggle) can keep this row's switches in sync without going
-   * through synthetic DOM events; a *separate* slot from `treeRow`/
-   * `groupedRow` (see themeElement.js's doc comment) since another
-   * sub-view's row for the same element, if it currently exists, needs
-   * independent updates.
+   * `buildRowControls` (no cascade hook — flat rows have no descendants).
+   * Registers `themeElement.listRow`, a slot separate from `treeRow`/
+   * `groupedRow` (see themeElement.js).
    *
    * @param {import('../model/themeElement.js').ThemeElement} themeElement
    *   The theme element this row represents.
@@ -548,11 +446,7 @@ export function createControllerPanel(options = {}) {
     });
 
     themeElement.listRow = {
-      // Scrolls this row into view whenever it becomes selected from
-      // *anywhere* (a real click on the overlay, the Branched sub-view,
-      // the Grouped sub-view) — not just a click on this row itself,
-      // which is already in view. Harmless in that case too: scrolling
-      // an already-visible element is a no-op.
+      // Scrolls into view on selection from anywhere, not just this row.
       setActivated: (checked) => {
         activation.setChecked(checked);
         if (checked) scrollRowIntoView(item);
@@ -566,20 +460,13 @@ export function createControllerPanel(options = {}) {
   }
 
   /**
-   * Expands every currently-collapsed ancestor of `item` (a Branched-
-   * sub-view row) — called before scrolling a newly-selected row into
-   * view (see `generateTreeItem`'s `treeRow.setActivated`), since a row
-   * nested inside a collapsed parent/grandparent is `display:none` (the
-   * `--collapsed` SCSS rule), and `scrollIntoView` silently does nothing
-   * for a non-rendered element.
-   *
-   * Reuses each ancestor's own disclosure button's real click handling
-   * (via a synthetic `.click()`) rather than duplicating its
-   * `collapsedById`/`aria-expanded` bookkeeping here. Safe to do —
-   * unlike the overlay ↔ list selection toggle, which deliberately
-   * avoids synthetic click-forwarding to prevent a bounce-back loop —
-   * since expanding is one-directional and idempotent: nothing the
-   * disclosure's click handler does calls back into this function.
+   * Expands every collapsed ancestor of `item` (a Branched row) — a
+   * collapsed ancestor is `display:none`, and `scrollIntoView` no-ops on
+   * a non-rendered element. Reuses each ancestor's own disclosure
+   * button's click handling via a synthetic `.click()`, rather than
+   * duplicating its `collapsedById` bookkeeping — safe here since
+   * expanding is one-directional (unlike overlay ↔ list selection, which
+   * avoids synthetic clicks to prevent a bounce-back loop).
    *
    * @param {Element} item A `.branched-item` row, possibly nested inside
    *   one or more collapsed ancestors.
@@ -594,13 +481,9 @@ export function createControllerPanel(options = {}) {
   }
 
   /**
-   * Scrolls a List/Branched row into view. Sets `scroll-margin-top` to
-   * the sticky tab nav's current height first — otherwise `scrollIntoView`
-   * can land the row's top edge exactly under `.tabbed-navigation`
-   * (`position: sticky; top: 0`), technically in the scrollable area but
-   * visually hidden behind it. Measured fresh each call rather than
-   * cached, since it only runs on selection (not a hot path) and stays
-   * correct if the nav's height ever changes.
+   * Scrolls a row into view. Sets `scroll-margin-top` to the sticky tab
+   * nav's height first, or `scrollIntoView` can land the row underneath
+   * it (visually hidden despite being "in view").
    *
    * @param {Element} item The row to scroll into view.
    * @returns {void}
@@ -613,15 +496,9 @@ export function createControllerPanel(options = {}) {
 
   /**
    * Recursively cascades a visibility change from `themeElement` to every
-   * descendant found in `childrenOf` (from `deriveThemeElementTree`) — an
-   * unconditional batch action, not a tri-state: re-showing a parent
-   * re-shows every descendant regardless of whether any were individually
-   * hidden before the parent was hidden, mirroring the same "All Elements"
-   * philosophy the Listed sub-view's own all-switch uses (see
-   * `generateListedSubView`). Each descendant's
-   * `overlay.setThemeElementVisible` call already syncs that descendant's
-   * own `listRow`/`treeRow`/`groupedRow` internally — no separate sync
-   * needed here.
+   * descendant in `childrenOf` (from `deriveThemeElementTree`) — an
+   * unconditional batch action: re-showing a parent re-shows every
+   * descendant regardless of prior individual state.
    *
    * @param {import('../model/themeElement.js').ThemeElement} themeElement
    *   The node whose descendants (not itself) should cascade.
@@ -638,29 +515,17 @@ export function createControllerPanel(options = {}) {
   }
 
   /**
-   * Builds the Branched sub-view's tree structure fresh from the
-   * *current* `themeElements` array and live DOM ancestry — deliberately
-   * recomputed from scratch on every call rather than incrementally
-   * maintained, since incrementally reparenting orphaned children on
-   * removal is meaningfully more bug-prone than a cheap full recompute
-   * (O(n × domDepth) — a few thousand comparisons at most for a realistic
-   * page). This also means "reparent to the nearest surviving tracked
-   * ancestor" after a dynamic removal happens for free: nothing removal-
-   * specific needs to run, whoever's now nearest is simply found fresh.
-   *
-   * An element's parent is the nearest ancestor (walking up
-   * `dataNode.parentElement`) that is *also* a currently-tracked
-   * `dataNode` — not necessarily its immediate DOM parent, since
-   * untracked elements commonly sit in between. Elements with no such
-   * ancestor are roots.
+   * Derives the Branched sub-view's tree from the current `themeElements`
+   * and live DOM ancestry — recomputed fresh on every call rather than
+   * incrementally maintained, so reparenting after a removal happens for
+   * free. An element's parent is the nearest ancestor that's also a
+   * tracked `dataNode` (not necessarily its immediate DOM parent);
+   * elements with none are roots.
    *
    * @returns {{
    *   roots: import('../model/themeElement.js').ThemeElement[],
    *   childrenOf: Map<import('../model/themeElement.js').ThemeElement, import('../model/themeElement.js').ThemeElement[]>,
-   * }} `roots` and each `childrenOf` array are in `themeElements` order.
-   *   `childrenOf` is the only map actually needed by both tree rendering
-   *   and the visibility cascade — a `parentOf` map isn't separately
-   *   required.
+   * }} In `themeElements` order.
    */
   function deriveThemeElementTree() {
     const byDataNode = new Map();
@@ -693,19 +558,12 @@ export function createControllerPanel(options = {}) {
 
   /**
    * Builds one Branched-sub-view row for `themeElement`: the same
-   * activation/visibility switches as `generateListItem` (via
-   * `buildRowControls`), plus a disclosure icon and — only if this
-   * element has children — a nested children container holding
-   * recursively-built child rows. A childless element still gets an icon
-   * in that same slot (a static, non-interactive "minus" glyph) rather
-   * than nothing at all — leaving the slot empty would shift that row's
-   * label/switches left relative to sibling rows that DO have a
-   * disclosure triangle, misaligning the whole tree. Indentation is
-   * purely structural: each nesting level's `.branched-item__children`
-   * container gets its own `padding-left` in SCSS, so depth-based
-   * indentation compounds naturally with no JS math needed. Registers
-   * `themeElement.treeRow` — a *separate* slot from `listRow` (see
-   * themeElement.js's doc comment for why both must exist independently).
+   * switches as `generateListItem`, plus a disclosure icon and (if it has
+   * children) a nested children container of recursively-built child
+   * rows. A childless element still gets a static "minus" glyph in the
+   * same slot, to keep rows aligned with siblings that do have a
+   * disclosure triangle. Registers `themeElement.treeRow`, separate from
+   * `listRow` (see themeElement.js).
    *
    * @param {import('../model/themeElement.js').ThemeElement} themeElement
    *   The theme element this row represents.
@@ -728,10 +586,6 @@ export function createControllerPanel(options = {}) {
     if (children.length > 0) {
       disclosure = document.createElement('button');
       disclosure.type = 'button';
-      // The icon font's glyph renders via its own `:before` rule keyed on
-      // `iconNavigateNext`, directly on this button — no separate icon
-      // element needed, matching how e.g. generateSliderButton's own
-      // icon class works.
       disclosure.classList.add(CLASS_NAMES.branchedItemDisclosure, CLASS_NAMES.iconNavigateNext);
       disclosure.setAttribute('aria-label', strings.toggleExpandCollapse);
 
@@ -740,11 +594,8 @@ export function createControllerPanel(options = {}) {
       children.forEach((child) => childrenContainer.appendChild(generateTreeItem(child, childrenOf)));
 
       /**
-       * Applies a collapsed/expanded state to this node's own DOM
-       * (children container + disclosure button), without touching
-       * `collapsedById` — used both by the click handler (which also
-       * writes to `collapsedById`) and at build time to apply whatever
-       * state was already remembered from a previous rebuild.
+       * Applies a collapsed/expanded state to this node's DOM, without
+       * touching `collapsedById`.
        *
        * @param {boolean} collapsed
        * @returns {void}
@@ -762,15 +613,8 @@ export function createControllerPanel(options = {}) {
 
       applyCollapsed(collapsedById.get(themeElement.id) ?? false);
     } else {
-      // Not a real disclosure control — a leaf has nothing to expand, but
-      // without SOME element reserving the same icon-width column, a
-      // leaf's row would shift left relative to sibling rows that DO have
-      // a disclosure triangle, misaligning every row's label/switches.
-      // Deliberately a <span>, not a <button>: it isn't interactive, so
-      // it shouldn't look or behave like a clickable control (see the
-      // matching `button.branched-item__disclosure` scoping in SCSS,
-      // which keeps `cursor: pointer` and the rotation transition off
-      // this element).
+      // A <span>, not a <button>: a leaf has nothing to expand, but still
+      // needs the same icon-width column reserved to keep rows aligned.
       disclosure = document.createElement('span');
       disclosure.classList.add(CLASS_NAMES.branchedItemDisclosure, CLASS_NAMES.iconMinus);
       disclosure.setAttribute('aria-hidden', 'true');
@@ -783,13 +627,8 @@ export function createControllerPanel(options = {}) {
     });
 
     themeElement.treeRow = {
-      // Same "scroll into view whenever selected from anywhere" behavior
-      // as `generateListItem`'s `listRow`, plus expanding any collapsed
-      // ancestor first — a row nested inside a collapsed parent is
-      // `display:none` (see the `--collapsed` SCSS rule), and
-      // `scrollIntoView` silently does nothing for a non-rendered
-      // element, so without this a selection arriving via a collapsed
-      // branch would select the row but never actually reveal it.
+      // Same as `listRow`, plus expanding any collapsed ancestor first —
+      // a row inside a collapsed parent is `display:none`.
       setActivated: (checked) => {
         activation.setChecked(checked);
         if (checked) {
@@ -851,19 +690,13 @@ export function createControllerPanel(options = {}) {
   }
 
   /**
-   * Shows the chosen sub-view's container and hides the other within
-   * `root`, updates the switcher buttons' active state, and — switching
-   * TO Branched — builds/rebuilds it if it's never been built yet or has
-   * gone stale since it was last shown (see `scheduleBranchedRefresh`).
+   * Shows the chosen sub-view's container and hides the others within
+   * `root`, updates the switcher buttons, and rebuilds Branched/Grouped
+   * if stale or never built (see `scheduleBranchedRefresh`).
    *
    * @param {'listed'|'branched'|'grouped'} subview
-   * @param {Element} root Subtree to query the three containers and the
-   *   switcher within. Always `panelRoot` except for one call, inside
-   *   `generateItemsTab` itself, which passes the tab's own not-yet-
-   *   attached `layer` — `panelRoot.querySelector` wouldn't find anything
-   *   not yet attached to it, but `querySelector` on any detached subtree
-   *   (attached or not) works fine, so an explicit root sidesteps that
-   *   ordering problem without duplicating this function's logic.
+   * @param {Element} root Subtree to query within — `panelRoot`, except
+   *   `generateItemsTab` passes its own not-yet-attached `layer`.
    * @returns {void}
    */
   function applyItemsSubView(subview, root) {
@@ -888,20 +721,11 @@ export function createControllerPanel(options = {}) {
   }
 
   /**
-   * Rebuilds the Branched sub-view's entire tree from scratch, using the
-   * current `themeElements`/DOM ancestry (via `deriveThemeElementTree` —
-   * see that function's own doc comment for why a full rebuild, rather
-   * than incremental patching, is the right call here). Collapsed/
-   * expanded state survives the rebuild via `collapsedById`, read fresh
-   * by each `generateTreeItem` call as it's (re)built; discarding the old
-   * row DOM is safe since both `listRow` and `treeRow` are independent
-   * slots (nothing outside the replaced subtree references the old rows).
+   * Rebuilds the Branched sub-view's tree from scratch (see
+   * `deriveThemeElementTree`). Collapse state survives via `collapsedById`.
    *
    * @param {Element|null} [branchedEl] The Branched container to rebuild
-   *   into. Defaults to looking it up via `panelRoot` — every caller
-   *   except `applyItemsSubView` (which already has it in hand from its
-   *   own, possibly-not-yet-`panelRoot`-attached `root`) relies on this
-   *   default.
+   *   into. Defaults to looking it up via `panelRoot`.
    * @returns {void}
    */
   function rebuildBranchedView(branchedEl = panelRoot?.querySelector(`.${CLASS_NAMES.branchedElementContent}`)) {
@@ -927,22 +751,14 @@ export function createControllerPanel(options = {}) {
   }
 
   /**
-   * Flags the Branched sub-view as needing a rebuild, and — only if it's
-   * currently the active sub-view — coalesces that rebuild via a
-   * microtask rather than running it synchronously. This is a correctness
-   * requirement, not just an efficiency one: `index.js`'s
-   * `reconcileDynamicContent` calls this panel's own `addThemeElement`/
-   * `removeThemeElement` synchronously, in a batch, and for removal
-   * specifically calls this panel's `removeThemeElement` *before*
-   * `overlayLayer.js`'s own `removeThemeElement` actually splices the
-   * element out of the shared `themeElements` array — rebuilding
-   * synchronously from in here would read a momentarily-stale array
-   * mid-batch. Scheduling via `Promise.resolve().then(...)` guarantees
-   * this only actually runs after the full synchronous batch (every
-   * add/remove call in that reconciliation pass) has settled, by which
-   * point `themeElements` is final. If Branched isn't currently active,
-   * no rebuild is scheduled at all — it happens lazily, once, the next
-   * time `applyItemsSubView` switches to it.
+   * Flags the Branched sub-view as needing a rebuild; if it's currently
+   * active, coalesces the rebuild via a microtask rather than running
+   * synchronously. Required for correctness, not just efficiency:
+   * `index.js`'s `reconcileDynamicContent` calls this panel's
+   * `removeThemeElement` *before* `overlayLayer.js`'s own splices the
+   * element out of `themeElements`, so a synchronous rebuild here would
+   * read a stale array mid-batch. If Branched isn't active, the rebuild
+   * happens lazily next time `applyItemsSubView` switches to it.
    *
    * @returns {void}
    */
@@ -959,19 +775,11 @@ export function createControllerPanel(options = {}) {
   // ---- Items tab: Grouped sub-view + Aggregate switch --------------------
 
   /**
-   * Expands `item`'s own group if it's currently collapsed — called before
-   * scrolling a newly-selected Grouped-sub-view row into view (see
-   * `generateGroupedItem`'s `groupedRow.setActivated`), for the same
-   * reason `expandCollapsedAncestors` exists for Branched: a row inside a
-   * collapsed group is `display:none` (the `--collapsed` SCSS rule), and
-   * `scrollIntoView` silently no-ops on a non-rendered element. Simpler
-   * than Branched's version — a Grouped row has exactly one possible
-   * collapsed ancestor (its own group), not an arbitrary-depth chain — so
-   * this only needs a single `closest()` lookup, not a loop. Reuses the
-   * group's own disclosure button's real click handling (via a synthetic
-   * `.click()`), which also keeps the Aggregate switch's live state in
-   * sync (see that handler in `generateGroupSection`) — no separate sync
-   * call needed here.
+   * Expands `item`'s own group if collapsed (a group has exactly one
+   * possible collapsed ancestor, so a single `closest()` suffices — see
+   * `expandCollapsedAncestors` for Branched's arbitrary-depth version).
+   * Reuses the group's disclosure button's click handling, which also
+   * keeps the Aggregate switch in sync.
    *
    * @param {Element} item A `.list-item` row inside a Grouped-sub-view
    *   group, possibly currently collapsed.
@@ -984,10 +792,8 @@ export function createControllerPanel(options = {}) {
 
   /**
    * Builds one Grouped-sub-view member row for `themeElement` — the same
-   * activation/visibility switches as `generateListItem` (via
-   * `buildRowControls`, flat, no cascade — a group member has no
-   * descendants). Registers `themeElement.groupedRow`, a *separate* slot
-   * from `listRow`/`treeRow` (see themeElement.js's doc comment).
+   * switches as `generateListItem` (flat, no cascade). Registers
+   * `themeElement.groupedRow`, separate from `listRow`/`treeRow`.
    *
    * @param {import('../model/themeElement.js').ThemeElement} themeElement
    *   The theme element this row represents.
@@ -1029,14 +835,10 @@ export function createControllerPanel(options = {}) {
   }
 
   /**
-   * A click on a group's own switch is a batch action: it sets every
-   * member's overlay to `visible`. The checked state this leaves behind
-   * isn't sticky, though — each member's own `groupedRow.setVisible`
-   * (triggered as a side effect of this same
-   * `overlay.setThemeElementVisible` call, per member) immediately calls
-   * `syncGroupSwitchForType`, so the switch converges to whatever
-   * "at least one member visible" actually reads once every member has
-   * updated, same as any other visibility change would produce.
+   * A click on a group's switch sets every member's overlay to `visible`.
+   * The checked state isn't sticky — each member's `groupedRow.setVisible`
+   * calls `syncGroupSwitchForType`, converging the switch to the real
+   * "at least one member visible" state.
    *
    * @param {ReturnType<typeof createOnOffSwitch>} groupSwitch
    * @param {import('../model/themeElement.js').ThemeElement[]} members
@@ -1051,25 +853,17 @@ export function createControllerPanel(options = {}) {
 
   /**
    * Builds one Grouped-sub-view group for `type`/`members`: a header row
-   * (disclosure button — always real/interactive, since a group only
-   * exists while it has at least one member, unlike Branched's childless-
-   * leaf case — plus the batch on/off switch, reusing the shared per-type
-   * switch styling verbatim, i.e. `CLASS_NAMES.filtersElementItemActivation`/
-   * `objectType`/`iconSquare`) and a children container of member rows
-   * (via `generateGroupedItem`). Registers this group's collapse-toggle
-   * function into `groupSectionsByType`, keyed by `type`, so the Aggregate
-   * switch (see `applyAggregateToAllGroups`) can bulk-collapse/expand
-   * every group without a full `rebuildGroupedView`.
+   * (disclosure button — a group always has ≥1 member, so it's always
+   * real/interactive — plus the batch on/off switch, reusing the shared
+   * per-type switch styling verbatim) and a children container of member
+   * rows. Registers this group's collapse-toggle into
+   * `groupSectionsByType` so the Aggregate switch can bulk-collapse/
+   * expand without a full `rebuildGroupedView`.
    *
-   * The switch's checked state is a live minimum-threshold read of real
-   * member visibility — "on" the instant at least one member is visible,
-   * "off" only once every member is hidden (`members.some(...)` here at
-   * build time; kept in sync afterward by `syncGroupSwitchForType`, which
-   * every member's `groupedRow.setVisible` calls regardless of what
-   * triggered the change). Never hardcoded `true` — see
-   * `rebuildGroupedView`'s doc comment for why that matters here
-   * specifically (this group gets torn down and rebuilt on every dynamic
-   * content change).
+   * The switch's checked state is a live minimum-threshold read of member
+   * visibility (`members.some(...)`, kept in sync by
+   * `syncGroupSwitchForType`) — never hardcoded, since this group is torn
+   * down and rebuilt on every dynamic content change.
    *
    * @param {string} type The `objectType` this group represents.
    * @param {import('../model/themeElement.js').ThemeElement[]} members
@@ -1092,11 +886,8 @@ export function createControllerPanel(options = {}) {
     members.forEach((themeElement) => childrenContainer.appendChild(generateGroupedItem(themeElement)));
 
     /**
-     * Applies a collapsed/expanded state to this group's own DOM (children
-     * container + disclosure button), without touching
-     * `groupCollapsedByType` — used by the click handler (which also
-     * writes to that map), by the initial build below, and by
-     * `applyAggregateToAllGroups` (bulk action, via `groupSectionsByType`).
+     * Applies a collapsed/expanded state to this group's DOM, without
+     * touching `groupCollapsedByType`.
      *
      * @param {boolean} collapsed
      * @returns {void}
@@ -1110,17 +901,11 @@ export function createControllerPanel(options = {}) {
       const collapsed = !groupCollapsedByType.get(type);
       groupCollapsedByType.set(type, collapsed);
       applyCollapsed(collapsed);
-      // A manual per-group toggle can change whether *every* group is now
-      // collapsed — keep the Aggregate switch's live-computed state
-      // honest immediately, not just on the next full rebuild.
       syncAggregateSwitchState();
     });
 
     applyCollapsed(groupCollapsedByType.get(type) ?? false);
 
-    // "At least one visible" (`.some`), not "every member visible"
-    // (`.every`) — see this function's own doc comment for why a
-    // minimum-threshold reading is the correct one here.
     const initialGroupVisible = members.some((themeElement) => overlay?.isThemeElementVisible(themeElement) ?? true);
     const groupSwitch = createOnOffSwitch({
       label: `${type} - (${members.length})`,
@@ -1137,10 +922,6 @@ export function createControllerPanel(options = {}) {
       applyGroupVisible(groupSwitch, members, !groupSwitch.input.checked);
     });
 
-    // Registered only now that `groupSwitch`/`members` both exist —
-    // `syncGroupSwitchForType` (called from every member's own
-    // `groupedRow.setVisible`, regardless of which row/tab triggered the
-    // change) reads this entry to recompute the switch's live state.
     groupSectionsByType.set(type, { setCollapsed: applyCollapsed, groupSwitch, members });
 
     header.append(disclosure, groupSwitch.wrapper);
@@ -1149,24 +930,11 @@ export function createControllerPanel(options = {}) {
   }
 
   /**
-   * Recomputes and pushes a group's on/off switch to reflect real,
-   * current member visibility — "at least one member visible" reads
-   * "on"; only once *every* member is hidden does it read "off". Called
-   * from every member's own `groupedRow.setVisible` (see
-   * `generateGroupedItem`), which fires for a visibility change from
-   * *any* source — this row's own click, another sub-view's row, or a
-   * direct overlay click — not just a click on this group's own switch,
-   * so the group's displayed state never lags behind what's actually
-   * visible on the page.
-   *
-   * Deliberately a minimum-threshold ("some", not "every") reading,
-   * confirmed directly with the user: a group of 5 members reads
-   * "activated" the instant even one becomes visible, and only reads
-   * "deactivated" once the very last visible one is hidden — the same
-   * immediate, no-lag requirement in both directions.
-   *
-   * A no-op if this `type` has no registered group (Grouped sub-view
-   * never built, or this exact rebuild hasn't reached this group yet).
+   * Recomputes and pushes a group's switch to reflect real member
+   * visibility — "on" if at least one member is visible, "off" only once
+   * every member is hidden. Called from every member's
+   * `groupedRow.setVisible`, for a change from any source. No-op if
+   * `type` has no registered group.
    *
    * @param {string} type The `objectType` whose group switch to resync.
    * @returns {void}
@@ -1180,9 +948,8 @@ export function createControllerPanel(options = {}) {
   }
 
   /**
-   * Is every current group collapsed? Read at both individual-toggle time
-   * and Aggregate-click time to keep the Aggregate switch's own displayed
-   * state truthful — see `syncAggregateSwitchState`.
+   * Is every current group collapsed? Backs the Aggregate switch's
+   * displayed state (see `syncAggregateSwitchState`).
    *
    * @param {Map<string, import('../model/themeElement.js').ThemeElement[]>} groups
    * @returns {boolean}
@@ -1192,12 +959,9 @@ export function createControllerPanel(options = {}) {
   }
 
   /**
-   * Pushes the Aggregate switch's live-computed checked state (see
-   * `computeAggregateAllGroups`) to its own control. Called after any
-   * individual group's disclosure toggles (`generateGroupSection`'s click
-   * handler) and after a full rebuild — never lets the switch go stale
-   * relative to what the groups are actually doing, per this feature's
-   * "recompute live, don't hardcode" requirement.
+   * Pushes the Aggregate switch's live-computed checked state to its
+   * control. Called after any group's disclosure toggles and after a
+   * full rebuild.
    *
    * @returns {void}
    */
@@ -1227,36 +991,19 @@ export function createControllerPanel(options = {}) {
   }
 
   /**
-   * Rebuilds the Grouped sub-view's entire content from scratch: the
-   * Aggregate header row plus one `generateGroupSection` per distinct
-   * `objectType` in the current `themeElements` (bucketed here, preserving
-   * first-seen order) — full rebuild, not incremental, matching
-   * Branched's own approach (see `rebuildBranchedView`'s doc comment for
-   * why: `index.js`'s `reconcileDynamicContent` calls this panel's own
-   * `removeThemeElement` before `overlayLayer.js`'s splices the element
-   * out of the shared array, so an incremental update here would risk
-   * reading a momentarily-stale array mid-batch — `scheduleGroupedRefresh`
-   * is what actually protects against that, via the same microtask
-   * coalescing).
+   * Rebuilds the Grouped sub-view from scratch: the Aggregate header row
+   * plus one `generateGroupSection` per distinct `objectType`, bucketed
+   * fresh from `themeElements` each time (full rebuild, mirrors
+   * `rebuildBranchedView`).
    *
-   * Collapse state (`groupCollapsedByType`) survives the rebuild: pruned
-   * here (any type no longer present is dropped) and seeded for any
-   * brand-new type using whatever the Aggregate switch read a moment ago
-   * (`wasAggregated`, computed from `currentGroupTypes` — the *previous*
-   * rebuild's groups — before this rebuild's pruning/seeding touches
-   * `groupCollapsedByType`) rather than the ordinary "no entry = expanded"
-   * default. Without this, a brand-new group arriving while Aggregate read
-   * "on" would spawn expanded, silently flipping Aggregate to "off" even
-   * though the user did nothing.
-   *
-   * Each group's own visibility switch is likewise computed from real
-   * member visibility, never hardcoded `true` — see `generateGroupSection`
-   * for why that matters given this full-rebuild-on-any-change strategy.
+   * `groupCollapsedByType` survives the rebuild: pruned for removed
+   * types, and a brand-new type is seeded with `wasAggregated` (the
+   * Aggregate state from just before this rebuild) rather than the usual
+   * "expanded by default" — otherwise a new group arriving while
+   * Aggregate reads "on" would flip it to "off" on its own.
    *
    * @param {Element|null} [groupedEl] The Grouped container to rebuild
-   *   into. Defaults to looking it up via `panelRoot` — every caller
-   *   except `applyItemsSubView` relies on this default (mirrors
-   *   `rebuildBranchedView`'s own parameter).
+   *   into. Defaults to looking it up via `panelRoot`.
    * @returns {void}
    */
   function rebuildGroupedView(groupedEl = panelRoot?.querySelector(`.${CLASS_NAMES.groupedElementContent}`)) {
@@ -1306,9 +1053,7 @@ export function createControllerPanel(options = {}) {
   }
 
   /**
-   * Is the Grouped sub-view currently the one showing? Read by
-   * `scheduleGroupedRefresh` to decide whether to coalesce an immediate
-   * rebuild or just flag staleness for later — mirrors
+   * Is the Grouped sub-view currently showing? Mirrors
    * `isBranchedSubViewActive`.
    *
    * @returns {boolean}
@@ -1319,9 +1064,8 @@ export function createControllerPanel(options = {}) {
 
   /**
    * Flags the Grouped sub-view as needing a rebuild, coalescing an
-   * immediate rebuild via a microtask if it's currently active — mirrors
-   * `scheduleBranchedRefresh` exactly, for the same correctness reason
-   * (see that function's own doc comment).
+   * immediate rebuild via a microtask if active — mirrors
+   * `scheduleBranchedRefresh`.
    *
    * @returns {void}
    */
@@ -1336,17 +1080,9 @@ export function createControllerPanel(options = {}) {
   }
 
   /**
-   * Builds the "no debug data" placeholder shown in place of the tab bar
-   * and its panels when `themeElements` came back empty. This happens
-   * whenever there's nothing for the parser to have found — most commonly
-   * the Chrome extension being activated on a non-Drupal page, or a Drupal
-   * page with Twig debugging turned off (unlike the Drupal module, which
-   * only ever renders the panel when the debug comments already exist,
-   * the extension's activation is a manual button click with no way to
-   * know in advance). Without this, the panel would open onto an empty
-   * Active Element panel plus three empty tabs, which reads as broken
-   * rather than "nothing to show" to someone who doesn't already know the
-   * debugger depends on Twig's theme-debug HTML comments.
+   * Builds the "no debug data" placeholder shown instead of the tab bar
+   * when `themeElements` is empty — e.g. the Chrome extension activated
+   * on a non-Drupal page, or Twig debugging turned off.
    *
    * @returns {Element} The placeholder panel, not yet attached to the DOM.
    */
@@ -1415,26 +1151,16 @@ export function createControllerPanel(options = {}) {
   }
 
   /**
-   * Builds the whole fly-out panel: the activation form (top checkbox),
-   * and the scrollable content area — Active Element, tab navigation, and
-   * the Selected/Items panels when `themeElements` is non-empty, or
-   * the `generateEmptyStateLayer` placeholder in its place when it's empty
-   * (see that function's doc comment for why) — then seals it behind a
-   * Shadow DOM boundary. Restores the activation state from `storage` and
-   * applies it immediately. Assigns `panelRoot` (the styled content, inside the
-   * shadow root) and `panelHost` (the plain light-DOM element that owns
-   * the shadow root) — required before any of the other functions in this
-   * file that query `panelRoot` can run.
+   * Builds the whole fly-out panel — activation form, then Active
+   * Element/tabs/Selected/Items (or `generateEmptyStateLayer` if
+   * `themeElements` is empty) — sealed behind a Shadow DOM boundary.
+   * Assigns `panelRoot` (styled content, inside the shadow root) and
+   * `panelHost` (the bare light-DOM element owning it).
    *
-   * The host is deliberately bare (no `visual-debugger*` classes) so
-   * nothing in the host page's CSS can coincidentally target it; all the
-   * real styling lives on `panelRoot`, matched by the embedded stylesheet
-   * from inside the shadow tree. That stylesheet opens with `:host { all:
-   * initial; }`, which resets every inherited property (including any
-   * `--vd-*` custom property the host page might set on `:root`/`body`)
-   * at the boundary — without it, inherited properties would still cross
-   * into the shadow tree despite the rule-scoping Shadow DOM otherwise
-   * gives us for free.
+   * `panelHost` carries no classes, so host-page CSS can't target it; the
+   * shadow stylesheet opens with `:host { all: initial; }` so no
+   * inherited property (including page-level `--vd-*` overrides) crosses
+   * the boundary.
    *
    * @returns {Element} `panelHost` — the element to append to the document.
    */
@@ -1717,10 +1443,8 @@ export function createControllerPanel(options = {}) {
   }
 
   /**
-   * Renders the currently-selected element's template file path as a
-   * copyable row into the Selected Element panel (or the empty-state tag
-   * if nothing's selected, or the selected element has no file path).
-   * Reads `defaultThemeElement` directly, same as `setSelectedElementSuggestions`.
+   * Renders the selected element's template file path as a copyable row
+   * (or the empty-state tag if none).
    *
    * @returns {void}
    */
@@ -1798,11 +1522,9 @@ export function createControllerPanel(options = {}) {
   // ---- Public hooks (consumed by the overlay engine) ------------------------
 
   /**
-   * `ControllerHooks.setActiveThemeElement` — called by the overlay engine
-   * when a theme element becomes hovered.
+   * `ControllerHooks.setActiveThemeElement` — a theme element became hovered.
    *
    * @param {import('../model/themeElement.js').ThemeElement} themeElement
-   *   The newly-hovered theme element.
    * @returns {void}
    */
   function setActiveThemeElement(themeElement) {
@@ -1811,8 +1533,8 @@ export function createControllerPanel(options = {}) {
   }
 
   /**
-   * `ControllerHooks.resetActiveThemeElement` — called by the overlay
-   * engine when the hovered theme element stops being hovered.
+   * `ControllerHooks.resetActiveThemeElement` — the hovered element stopped
+   * being hovered.
    *
    * @returns {void}
    */
@@ -1822,11 +1544,10 @@ export function createControllerPanel(options = {}) {
   }
 
   /**
-   * `ControllerHooks.setDefaultThemeElement` — called by the overlay
-   * engine when a theme element becomes the single selected element.
+   * `ControllerHooks.setDefaultThemeElement` — a theme element became the
+   * selected element.
    *
    * @param {import('../model/themeElement.js').ThemeElement} themeElement
-   *   The newly-selected theme element.
    * @returns {void}
    */
   function setDefaultThemeElement(themeElement) {
@@ -1835,8 +1556,8 @@ export function createControllerPanel(options = {}) {
   }
 
   /**
-   * `ControllerHooks.resetDefaultThemeElement` — called by the overlay
-   * engine when the selected theme element is deselected.
+   * `ControllerHooks.resetDefaultThemeElement` — the selected element was
+   * deselected.
    *
    * @returns {void}
    */
@@ -1848,29 +1569,16 @@ export function createControllerPanel(options = {}) {
   // ---- Dynamic content (AJAX/BigPipe) ---------------------------------------
 
   /**
-   * Incorporates a theme element discovered after construction into the
-   * already-running panel (see `index.js`'s `reconcileDynamicContent`).
-   * `themeElement` must already be present in the shared `themeElements`
-   * array — this function reads it, it doesn't push it (ownership of that
-   * push belongs to `overlayLayer.js`'s own `addThemeElement`, which must
-   * run first; see that function's doc comment for why).
+   * Incorporates a theme element discovered after construction (see
+   * `index.js`'s `reconcileDynamicContent`). `themeElement` must already
+   * be in the shared `themeElements` array — `overlayLayer.js`'s own
+   * `addThemeElement` owns pushing it, and must run first.
    *
-   * If the panel is currently showing the empty-state placeholder (this is
-   * the very first theme element ever seen on this page), tears that down
-   * and builds the normal tab UI fresh instead — since `themeElements`
-   * already includes `themeElement` by this point, the freshly-built
-   * Items tab already accounts for it, so there's nothing further to do
-   * on that path. Deliberately does not re-run
-   * `generateSliderButton`/`calculateInitialControllerWidth`/
-   * `checkControllerActivation` — those already ran once in the original
-   * `executePostActivation` regardless of empty state; rerunning them
-   * would create a second slider button and duplicate `document`-level
-   * `mousemove`/`mouseup` listeners.
-   *
-   * Otherwise (the panel already has a full tab UI), appends one Listed
-   * row; the Branched and Grouped sub-views are scheduled for a full
-   * rebuild instead of an incremental update (see `scheduleBranchedRefresh`/
-   * `scheduleGroupedRefresh` below).
+   * If the panel is showing the empty-state placeholder, tears it down
+   * and builds the full tab UI fresh (without re-running
+   * `generateSliderButton`/`calculateInitialControllerWidth`, which
+   * already ran once). Otherwise appends one Listed row and schedules a
+   * Branched/Grouped rebuild.
    *
    * @param {import('../model/themeElement.js').ThemeElement} themeElement
    *   The newly-discovered theme element (already in `themeElements`).
@@ -1896,35 +1604,18 @@ export function createControllerPanel(options = {}) {
     const listContent = panelRoot.querySelector(`#${IDS.controllerElementList} .${CLASS_NAMES.listElementContent}`);
     listContent?.appendChild(generateListItem(themeElement));
 
-    // The Listed row above was added incrementally; the Branched sub-
-    // view's tree and the Grouped sub-view's bucketed groups instead get
-    // rebuilt wholesale — see `scheduleBranchedRefresh`'s own doc comment
-    // for why (timing relative to `overlayLayer.js`'s own add/remove, and
-    // why a full rebuild is the right call rather than incremental
-    // patching); `scheduleGroupedRefresh` follows the exact same
-    // reasoning.
+    // Listed row added incrementally above; Branched/Grouped rebuild
+    // wholesale instead (see `scheduleBranchedRefresh`).
     scheduleBranchedRefresh();
     scheduleGroupedRefresh();
   }
 
   /**
    * Reverses `addThemeElement`'s incremental path — call BEFORE
-   * `overlayLayer.js`'s own `removeThemeElement` for the same
-   * `themeElement`, while `themeElement.listRow`/`treeRow`/`groupedRow`/
-   * `instanceLayer` are still intact (overlay's removal is what nulls
-   * them). Resets the Active/Selected panels first if either was pointing
-   * at `themeElement` — since overlay's `removeThemeElement` also
-   * deselects via `setChecked`, but hover (`activeThemeElement`) has no
-   * overlay-side equivalent to check, this identity check is this panel's
-   * own responsibility regardless. Removes the element's Listed row;
-   * schedules a Branched/Grouped sub-view refresh (see
-   * `scheduleBranchedRefresh`/`scheduleGroupedRefresh`) rather than
-   * removing a Branched/Grouped row directly.
-   *
-   * Reverting to the empty-state placeholder if this removes the very
-   * last theme element is a plausible nice-to-have, deliberately not
-   * implemented here — a low-likelihood scenario not worth the asymmetric
-   * teardown complexity.
+   * `overlayLayer.js`'s own `removeThemeElement` for the same element,
+   * while `listRow`/`treeRow`/`groupedRow`/`instanceLayer` are still
+   * intact. Resets Active/Selected panels if pointing at `themeElement`,
+   * removes its Listed row, and schedules a Branched/Grouped refresh.
    *
    * @param {import('../model/themeElement.js').ThemeElement} themeElement
    *   The theme element to stop tracking.
@@ -1935,30 +1626,16 @@ export function createControllerPanel(options = {}) {
     if (defaultThemeElement === themeElement) resetDefaultThemeElement();
 
     themeElement.listRow?.remove();
-
-    // Only the Listed row's own DOM needs explicit removal above (via
-    // `listRow.remove()`) — the Branched sub-view's row and the Grouped
-    // sub-view's row for this element (if any) disappear for free the
-    // next time each is rebuilt, since a removed element is no longer in
-    // `themeElements` by then. Also drops any remembered collapsed/
-    // expanded state for this element, so a long-running, AJAX-heavy page
-    // doesn't leak `collapsedById` entries for elements that no longer
-    // exist (`groupCollapsedByType` is keyed by `objectType`, not element
-    // id, so it needs no equivalent per-element cleanup here — it's
-    // pruned wholesale inside `rebuildGroupedView` instead).
     collapsedById.delete(themeElement.id);
     scheduleBranchedRefresh();
     scheduleGroupedRefresh();
   }
 
   /**
-   * One-time setup that must run after the panel's DOM exists and has been
-   * attached to the document (so `getBoundingClientRect`/computed styles
-   * are meaningful): wires the resize handle, sizes the panel, positions
-   * it per its activation state, renders the initial Active/Selected
-   * Element panels, and activates the "Selected" tab. Called once by the
-   * consumer (see `src/index.js`) after appending the panel's `controllerLayer`
-   * (the shadow host) to the document.
+   * One-time setup that must run after the panel's DOM is attached (so
+   * `getBoundingClientRect`/computed styles are meaningful): resize
+   * handle, panel sizing/position, initial Active/Selected panels, and
+   * the "Selected" tab. Called once by `src/index.js`.
    *
    * @returns {void}
    */
@@ -1972,17 +1649,11 @@ export function createControllerPanel(options = {}) {
   }
 
   /**
-   * Tears down everything this panel registered outside of `panelHost`
-   * itself, then removes `panelHost`. The two `document`-level slider
-   * listeners and the body-offset `MutationObserver` all outlive the
-   * panel's own DOM (they're registered on `document`/`document.body`,
-   * neither of which this panel ever removes), so without this they — and
-   * every closure they hold onto (`panelRoot`, `storage`, `strings`, this
-   * entire factory's scope) — would keep running, and keep the panel
-   * alive in memory, forever. Everything else (tab/row listeners, the
-   * activation checkbox, etc.) lives inside `panelHost`'s
-   * shadow tree and is removed along with it, with no separate cleanup
-   * needed.
+   * Tears down everything registered outside `panelHost` (the two
+   * `document`-level slider listeners, the body-offset observer — all
+   * registered on `document`/`document.body`, which would otherwise keep
+   * this closure alive), then removes `panelHost` itself. Everything else
+   * lives inside its shadow tree and goes with it.
    *
    * @returns {void}
    */
@@ -2001,13 +1672,7 @@ export function createControllerPanel(options = {}) {
 
   return {
     /**
-     * The Shadow DOM host built synchronously above (`panelHost`) — append
-     * it to the document once. All of the panel's actual markup lives
-     * inside its shadow root, sealed off from the host page's CSS in both
-     * directions (see `generateControllerLayer`'s doc comment); this host
-     * element itself carries no meaningful classes, so it's not a useful
-     * target for external styling either. The getter just exposes the
-     * closured value — it's never reassigned after construction.
+     * The Shadow DOM host (`panelHost`) — append it to the document once.
      *
      * @returns {Element}
      */

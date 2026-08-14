@@ -71,13 +71,10 @@ $color--shadow: $color--gray;
   --#{$prefix}z-index--base: 10000;
   --#{$prefix}transition-speed: .25s;
 
-  // Fonts. Open Sans Semi Condensed is vendored (fonts/open-sans/, as
-  // downloaded from Google Fonts — see README "Open Sans") and embedded
-  // into the panel's Shadow DOM stylesheet at build time (build.mjs's
-  // buildOpenSansFontFaceCss()); it isn't loaded from Google or relied on
-  // as a locally-installed font. Only Light (300), Medium (500), and Bold
-  // (700) are embedded — there's no true Regular/400 cut of this
-  // condensed style, so --font-weight--content below is 500, not 400.
+  // Open Sans Semi Condensed is vendored (fonts/open-sans/) and embedded
+  // at build time (build.mjs's buildOpenSansFontFaceCss()) — see README
+  // "Open Sans". Only Light/Medium/Bold are embedded (no Regular/400),
+  // so --font-weight--content below is 500, not 400.
   --#{$prefix}font-family--title: 'Open Sans Semi Condensed', sans-serif;
   --#{$prefix}font-family--content: 'Open Sans Semi Condensed', sans-serif;
   --#{$prefix}font-family--monospace: 'Courier New', monospace;

@@ -2,31 +2,23 @@ import { CLASS_NAMES, LAYER_ATTRIBUTES } from '../constants.js';
 
 /**
  * Builds and manages the overlay layers painted on top of each parsed
- * theme element. Fully agnostic: it operates on the ThemeElement objects
- * it's given and has no knowledge of Drupal comments or Twig.
+ * theme element. Fully agnostic — no knowledge of Drupal comments or Twig.
  *
- * Builds one overlay ("instance layer") per theme element immediately, up
- * front, and mutates each `themeElement` in place by setting its
- * `instanceLayer` property — everything else in this module (and the
- * controller panel) locates a theme element's overlay through that
- * property rather than keeping a separate lookup table.
+ * Builds one overlay ("instance layer") per theme element up front, and
+ * mutates each `themeElement` in place by setting its `instanceLayer`
+ * property — everything else locates a theme element's overlay through
+ * that property rather than a separate lookup table.
  *
  * @param {object} options
  * @param {import('../model/themeElement.js').ThemeElement[]} options.themeElements
- *   Every theme element found on the page (from `parseThemeDebugElements`).
- *   The returned engine holds onto this exact array/its elements — mutating
- *   a `themeElement` after this call (e.g. setting `.listRow`) is how the
- *   controller panel wires itself in, not an anti-pattern to avoid here.
- *   `addThemeElement`/`removeThemeElement` (see the returned shape) push/
- *   splice this same array, so anything else holding a reference to it
- *   (e.g. `index.js`, `getUniquePropertyHooks`) sees dynamic changes too.
- * @param {() => void} [options.onDomChanged] Called (debounced, no payload)
- *   whenever a DOM mutation suggests content may have appeared or
- *   disappeared somewhere in the document — see `observePositionChanges`'s
- *   `scheduleContentNotify`. This module stays parser-agnostic on purpose
- *   (see the file-level doc comment): it never decides *what* changed,
- *   only that something did; `index.js` is the one that reacts by
- *   re-parsing and calling `addThemeElement`/`removeThemeElement`.
+ *   Every theme element found on the page. The returned engine holds this
+ *   exact array — `addThemeElement`/`removeThemeElement` push/splice it,
+ *   so any other holder (e.g. `index.js`) sees dynamic changes too.
+ * @param {() => void} [options.onDomChanged] Called (debounced) whenever a
+ *   DOM mutation suggests content appeared/disappeared — see
+ *   `observePositionChanges`'s `scheduleContentNotify`. This module never
+ *   decides *what* changed, only that something did; `index.js` re-parses
+ *   and calls `addThemeElement`/`removeThemeElement`.
  * @returns {{
  *   baseLayer: Element,
  *   attachControllerHooks: (hooks: ControllerHooks) => void,
@@ -39,15 +31,9 @@ import { CLASS_NAMES, LAYER_ATTRIBUTES } from '../constants.js';
  *   addThemeElement: (themeElement: import('../model/themeElement.js').ThemeElement) => void,
  *   removeThemeElement: (themeElement: import('../model/themeElement.js').ThemeElement) => void,
  *   destroy: () => void,
- * }} `baseLayer` is the container element holding every instance layer —
- *   append it to the document once. The rest of the shape is the API
- *   surface the controller panel's Items tab sub-views drive directly (see
- *   each named function below for details); `attachControllerHooks` wires
- *   up the reverse direction (overlay → panel notifications);
- *   `addThemeElement`/`removeThemeElement` incorporate/evict a theme
- *   element discovered/lost after this initial construction (see each for
- *   details); `destroy` tears all of this back down (see its own doc
- *   comment).
+ * }} `baseLayer` holds every instance layer — append it once.
+ *   `attachControllerHooks` wires overlay → panel notifications; the rest
+ *   is the API surface the controller panel drives directly.
  */
 export function createOverlayEngine({ themeElements, onDomChanged }) {
   const baseLayer = document.createElement('div');
@@ -57,11 +43,8 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
   let controllerHooks = null;
 
   /**
-   * One entry per distinct `position: sticky` ancestor found on the page —
-   * see `setupStickyTracking`/`createStickyGroup`. Real pages almost
-   * always have only a handful of distinct sticky containers (a header,
-   * maybe a sidebar) regardless of how many theme elements are tracked,
-   * so this stays small independent of page size.
+   * One entry per distinct `position: sticky` ancestor found on the page
+   * — see `setupStickyTracking`/`createStickyGroup`.
    *
    * @type {Map<Element, StickyGroup>}
    */
@@ -80,16 +63,13 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
   } = observePositionChanges(themeElements, onDomChanged);
 
   /**
-   * Creates the overlay box painted on top of a single theme element's
-   * real DOM node: positions it to match that node's current bounding box,
-   * gives it a checkbox + activated/deactivated icons (the overlay's own
-   * visible checked/unchecked indicator), and wires up hover (highlight +
-   * notify the panel's Active Element view) and click (toggle selection).
+   * Creates the overlay box for a single theme element: positions it over
+   * the node's bounding box, adds a checkbox + activated/deactivated
+   * icons, and wires up hover (highlight + notify the panel) and click
+   * (toggle selection).
    *
    * @param {import('../model/themeElement.js').ThemeElement} themeElement
-   *   The theme element to build an overlay for. Read for `objectType`,
-   *   `id`, and `dataNode`; not mutated by this function itself (the
-   *   caller sets `.instanceLayer` after this returns).
+   *   Not mutated here — the caller sets `.instanceLayer` after this returns.
    * @returns {Element} The overlay `<div>`, not yet attached to `baseLayer`.
    */
   function buildInstanceLayer(themeElement) {
@@ -104,10 +84,7 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
     layer.setAttribute(LAYER_ATTRIBUTES.visible, 'true');
     layer.style.zIndex = String(getDomDepth(themeElement.dataNode));
     classifyPositionStrategy(themeElement.dataNode);
-    // Sticky only needs live tracking if the element isn't already
-    // unconditionally fixed — a genuinely-fixed element needs nothing
-    // further, and checking here (rather than inside `setupStickyTracking`
-    // itself) keeps that function focused on sticky detection alone.
+    // A genuinely-fixed element needs no live sticky tracking.
     if (themeElement.dataNode.getAttribute(LAYER_ATTRIBUTES.positionStrategy) !== 'fixed') {
       setupStickyTracking(themeElement);
     }
@@ -212,8 +189,7 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
 
   /**
    * Shows or hides a theme element's overlay layer. Deactivates it first
-   * if it was the selected one, mirroring the original module's
-   * hideInstanceLayer().
+   * if it was the selected one.
    *
    * @param {import('../model/themeElement.js').ThemeElement} themeElement
    *   The theme element to show or hide.
@@ -233,14 +209,11 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
 
   /**
    * Is this theme element's overlay currently visible? The visibility
-   * counterpart to `isChecked` — used by row-building code (the Items
-   * tab's sub-views) to read real current state rather than assuming a
-   * default, since a row can be (re)built well after the element's actual
-   * visibility was last changed elsewhere (another sub-view's switch, a
-   * batch toggle, etc.).
+   * counterpart to `isChecked` — read by row-building code for real
+   * current state rather than assuming a default.
    *
    * @param {import('../model/themeElement.js').ThemeElement} themeElement
-   *   The theme element to check. Must already have an `instanceLayer`.
+   *   Must already have an `instanceLayer`.
    * @returns {boolean} `true` if this element's overlay is currently visible.
    */
   function isThemeElementVisible(themeElement) {
@@ -277,16 +250,10 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
 
   /**
    * Incorporates a newly-discovered theme element into this already-
-   * running engine: builds and appends its overlay exactly like the
-   * construction-time elements got, starts tracking its size via
-   * `resizeObserver`, and pushes it into the shared `themeElements` array
-   * — the one place ownership of that push lives; `controllerPanel.js`'s
-   * own `addThemeElement` takes the object as a given and must not also
-   * push it, or the array (and anything that reads it, e.g.
-   * `getUniquePropertyHooks`) ends up with duplicates. No-op if
-   * `themeElement` was already added, in case dynamic-content
-   * reconciliation (see `index.js`'s `reconcileDynamicContent`) ever
-   * double-fires for the same object.
+   * running engine: builds/appends its overlay, tracks its size, and
+   * pushes it into `themeElements` — the one place that push happens;
+   * `controllerPanel.js`'s own `addThemeElement` must not also push it.
+   * No-op if already added.
    *
    * @param {import('../model/themeElement.js').ThemeElement} themeElement
    *   A freshly-parsed theme element, not yet carrying an `instanceLayer`.
@@ -302,22 +269,16 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
   }
 
   /**
-   * Reverses `addThemeElement` — also used for elements that were present
-   * at construction time, e.g. once their `dataNode` is detected as
-   * detached from the document (see `reconcileDynamicContent`). Deselects
-   * the element first if it was the checked/selected one (cascades into
-   * the usual `resetDefaultThemeElement` notification via `setChecked`,
-   * no extra plumbing needed), stops tracking its size, removes its
-   * overlay from the document, strips the `data-vd-id` the parser stamped
-   * — so a library that detaches-and-later-reinserts the same node (e.g.
-   * a cached/reused dialog) is picked up fresh on a later rescan rather
-   * than being permanently skipped by the parser's own cross-call dedup
-   * guard — and drops it from the shared `themeElements` array. No-op if
-   * `themeElement` was already removed.
+   * Reverses `addThemeElement` — also used when a construction-time
+   * element's `dataNode` is later detected as detached (see
+   * `reconcileDynamicContent`). Deselects if checked, stops size
+   * tracking, removes the overlay, strips the `data-vd-id` the parser
+   * stamped (so a detached-and-reinserted node is picked up fresh rather
+   * than skipped by the parser's dedup guard), and drops it from
+   * `themeElements`. No-op if already removed.
    *
-   * Callers (see `index.js`'s `reconcileDynamicContent`) must call
-   * `controllerPanel`'s equivalent `removeThemeElement` FIRST, while
-   * `themeElement.listRow`/`treeRow`/`groupedRow`/`instanceLayer` are
+   * Callers must call `controllerPanel`'s equivalent `removeThemeElement`
+   * FIRST, while `listRow`/`treeRow`/`groupedRow`/`instanceLayer` are
    * still intact — this function nulls all four.
    *
    * @param {import('../model/themeElement.js').ThemeElement} themeElement
@@ -342,18 +303,11 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
 
   /**
    * Sizes and positions an overlay layer to match a reference element's
-   * current bounding box. Branches on `refElement`'s cached
-   * `LAYER_ATTRIBUTES.positionStrategy` (set once by
-   * `classifyPositionStrategy`, never derived here) — for an element
-   * that's itself `position: fixed`, or a descendant of a clean,
-   * viewport-anchored `position: fixed` ancestor, the overlay is
-   * positioned `fixed` too, straight from the viewport-relative
-   * `getBoundingClientRect` values with no scroll offset added; setting
-   * `position` inline overrides the stylesheet's class-driven `position:
-   * absolute` (from `.instance-element`'s SCSS rule) with no SCSS changes
-   * needed, since inline style always wins over a class selector.
-   * Everything else keeps the ordinary document-relative math (accounting
-   * for page scroll) exactly as before.
+   * bounding box. Branches on `refElement`'s cached
+   * `LAYER_ATTRIBUTES.positionStrategy` (set by `classifyPositionStrategy`):
+   * a `fixed` element gets `position: fixed` with no scroll offset added
+   * (inline style overrides the stylesheet's `position: absolute`);
+   * everything else uses ordinary document-relative math.
    *
    * @param {Element} layer The overlay `<div>` to reposition.
    * @param {Element} refElement The real DOM element the overlay tracks.
@@ -370,14 +324,11 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
   }
 
   /**
-   * Properties that establish a containing block for `position: fixed`
-   * descendants specifically — a stricter, different set than what
-   * affects `position: absolute` descendants (plain `relative`/
-   * `absolute`/`sticky` on an ancestor does *not* count here; only these
-   * do). Verified against the current CSS Positioned Layout / Transforms
-   * / Contain specs. Checked via `getComputedStyle`, never via a raw
-   * `style` attribute read, since these can come from a stylesheet rule
-   * just as easily as an inline style.
+   * Does this ancestor establish a containing block for `position: fixed`
+   * descendants? A stricter set of properties than what affects
+   * `position: absolute` (plain `relative`/`absolute`/`sticky` don't
+   * count). Checked via `getComputedStyle`, not a raw `style` attribute,
+   * since these can come from a stylesheet rule too.
    *
    * @param {CSSStyleDeclaration} computedStyle Result of
    *   `getComputedStyle(ancestor)` for the ancestor being tested.
@@ -405,40 +356,24 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
   }
 
   /**
-   * Classifies, once, whether `dataNode` should be tracked as
-   * `position: fixed` (itself, or a descendant of a clean, viewport-
-   * anchored `position: fixed` ancestor) or with the ordinary document-
-   * relative strategy — and caches the result as
-   * `LAYER_ATTRIBUTES.positionStrategy` directly on `dataNode`, the only
-   * thing `positionLayer` ever reads. Deliberately runs once, when an
-   * element is first added to tracking (see `buildInstanceLayer`), not on
-   * every position-sync tick — seeing whether an element sits inside a
-   * fixed ancestor is normally a static fact of the page's structure for
-   * that element's lifetime, and a `getComputedStyle` walk per element per
-   * animation frame would be real, avoidable cost on top of the
-   * `getBoundingClientRect` calls already happening there. If an
-   * element's classification genuinely needs to change later, the
-   * existing AJAX/BigPipe reconciliation already reclassifies from
-   * scratch whenever an element is removed-and-re-added.
+   * Classifies, once, whether `dataNode` is `position: fixed` (itself, or
+   * a descendant of a clean, viewport-anchored `position: fixed`
+   * ancestor) or ordinary document-relative, caching the result as
+   * `LAYER_ATTRIBUTES.positionStrategy` — the only thing `positionLayer`
+   * reads. Runs once at tracking time (see `buildInstanceLayer`), not per
+   * frame, since this is normally a static fact of the page's structure;
+   * AJAX/BigPipe reconciliation reclassifies on remove-and-re-add if it
+   * ever needs to change.
    *
-   * Walks from `dataNode` upward (checking `dataNode` itself first) for
-   * the nearest `position: fixed` ancestor, short-circuiting instantly if
-   * it encounters an ancestor already marked
-   * `LAYER_ATTRIBUTES.fixedContainingBlock` by a *previous* element's
-   * classification — but only after revalidating that marker with one
-   * `getComputedStyle` check, not by trusting it blindly: without that
-   * revalidation, a marker written once and never invalidated would
-   * misclassify future elements once that ancestor's CSS later toggles
-   * away from `position: fixed` (e.g. a header that switches between
-   * `fixed`/`static` via a scroll-driven class toggle). Once a fixed
-   * ancestor is found (freshly, or confirmed-still-valid via the marker),
-   * continues walking upward from it checking every remaining ancestor
-   * via `establishesFixedContainingBlock` — if any is found, that fixed
-   * ancestor isn't actually anchored to the true viewport (something
-   * between it and the viewport intercepts it), so the safe fallback is
-   * "not fixed". Otherwise, the fixed ancestor is confirmed clean: it gets
-   * marked for future elements to short-circuit on, and `dataNode` is
-   * classified `'fixed'`.
+   * Walks up from `dataNode` for the nearest `position: fixed` ancestor,
+   * short-circuiting on an ancestor already marked
+   * `LAYER_ATTRIBUTES.fixedContainingBlock` by a previous classification
+   * — but revalidated with one `getComputedStyle` check first, since a
+   * stale marker would misclassify once that ancestor's CSS later
+   * changes. Once found, walks upward from it checking every remaining
+   * ancestor via `establishesFixedContainingBlock`; if any neutralizes
+   * it, falls back to "not fixed" — otherwise marks it clean and
+   * classifies `dataNode` as `'fixed'`.
    *
    * @param {Element} dataNode The real page element to classify.
    * @returns {void}
@@ -512,15 +447,11 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
    */
 
   /**
-   * Finds the nearest `position: sticky` ancestor (including `dataNode`
-   * itself) that could plausibly ever actually stick — i.e. also has at
-   * least one of `top`/`right`/`bottom`/`left` not `auto` (a bare
-   * `position: sticky` with no offset behaves exactly like `position:
-   * relative` and never pins, so there's no point building tracking for
-   * it). Scoped to `top`-stickiness only for now (see this feature's
-   * "Known limitations" — `bottom`/`left`/`right`-sticky elements are
-   * simply never matched here, falling back to the ordinary absolute+
-   * scroll strategy like any other in-flow content).
+   * Finds the nearest `position: sticky` ancestor (including `dataNode`)
+   * that could plausibly stick — i.e. `top` isn't `auto` (a bare `sticky`
+   * with no offset never pins). Scoped to `top`-stickiness only for now;
+   * `bottom`/`left`/`right`-sticky elements fall back to the ordinary
+   * absolute+scroll strategy.
    *
    * @param {Element} dataNode The real page element to search from.
    * @returns {Element|null} The nearest usable sticky ancestor, or `null`.
@@ -538,33 +469,18 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
   }
 
   /**
-   * Finds the nearest ancestor that is genuinely, actively user-scrollable
-   * — the correct `root` for an `IntersectionObserver` watching a sentinel
-   * near `element`. `null` (meaning the viewport) if none exists, which is
-   * both the common case for a page-level sticky header AND the safe
-   * default whenever nothing more specific is confirmed.
+   * Finds the nearest genuinely, actively user-scrollable ancestor — the
+   * correct `IntersectionObserver` root for a sentinel near `element`.
+   * `null` (viewport) if none exists.
    *
-   * Deliberately stricter than "computed overflow isn't `visible`":
-   * - Only `auto`/`scroll` qualify, not `hidden`/`clip` — `hidden` clips
-   *   content but isn't a container a user actually scrolls; treating it
-   *   as one produces a root whose own bounding rect (via
-   *   `getBoundingClientRect`, always viewport-relative) spans however
-   *   much of the *page* that element renders, not the visible viewport —
-   *   since nothing genuinely scrolls *inside* it, intersection against
-   *   that oversized rect only flips once the sentinel scrolls out of the
-   *   element's entire rendered extent, not the viewport, which reads as
-   *   "the stuck transition doesn't fire until the sentinel leaves the
-   *   whole page." A real, confirmed failure mode, not a hypothetical one.
-   * - Also requires genuine overflow (`scrollHeight`/`scrollWidth`
-   *   exceeding the client box) — a declared-but-inactive `overflow: auto`
-   *   with nothing to scroll shouldn't qualify either.
-   * - `document.body`/`document.documentElement` are never returned even
-   *   if they'd otherwise match (e.g. a `body { overflow-x: hidden }`
-   *   reset, common for suppressing accidental horizontal scrollbars, was
-   *   the concrete case that surfaced this) — real page-level scrolling
-   *   should just use `root: null`, which is unconditionally correct and
-   *   carries none of the above risk; treating body/html as a stand-in
-   *   for the same thing is exactly what caused it.
+   * Stricter than "overflow isn't `visible`": requires `auto`/`scroll`
+   * (not `hidden`/`clip`, which clip but aren't user-scrolled — using one
+   * as root would size it to the element's full rendered extent rather
+   * than the viewport, delaying the stuck transition) and genuine
+   * overflow (`scrollHeight`/`scrollWidth` exceeding the client box).
+   * `document.body`/`documentElement` are never returned even if they'd
+   * match (e.g. a `body { overflow-x: hidden }` reset) — real page
+   * scrolling should just use `root: null`.
    *
    * @param {Element} element Ancestor search starts at `element.parentElement`.
    * @returns {Element|null} The nearest genuinely scrollable ancestor, or `null`.
@@ -582,17 +498,12 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
   }
 
   /**
-   * Live, transition-driven counterpart to `classifyPositionStrategy` for
-   * elements that aren't unconditionally fixed but do sit under a
-   * `position: sticky` ancestor — sticky can't be classified once and
-   * cached forever the way fixed can, since whether it's *currently*
-   * pinned changes continuously with scroll position, with no
-   * `getComputedStyle` signal that reveals which state it's in at any
-   * given moment. Detects the sticky ancestor (if any), then joins or
-   * creates its shared `StickyGroup` (see `createStickyGroup`) — many
-   * theme elements commonly resolve to the very same sticky ancestor
-   * (e.g. several tracked elements inside one header), so only the first
-   * one actually creates a sentinel/observer.
+   * Live counterpart to `classifyPositionStrategy` for elements under a
+   * `position: sticky` ancestor — sticky can't be cached once like fixed,
+   * since whether it's currently pinned changes with scroll position and
+   * `getComputedStyle` can't reveal that. Joins or creates the ancestor's
+   * shared `StickyGroup` (many elements commonly share one ancestor, so
+   * only the first creates a sentinel/observer).
    *
    * @param {import('../model/themeElement.js').ThemeElement} themeElement
    *   The theme element to wire up live sticky tracking for, if applicable.
@@ -612,34 +523,21 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
   }
 
   /**
-   * Builds a new `StickyGroup` for a just-discovered sticky ancestor: an
-   * invisible-in-effect sentinel (a real, in-flow sibling — `height: 1px;
-   * margin: 0; padding: 0`, negligible but real layout footprint) inserted
-   * immediately before it, watched by an `IntersectionObserver` rooted at
-   * its nearest actual scroll container. The observer fires only at the
-   * two stuck/unstuck transition instants (see `handleStickyIntersection`)
-   * — no per-frame or per-scroll-pixel cost either way.
+   * Builds a new `StickyGroup` for a just-discovered sticky ancestor: a
+   * near-invisible sentinel (`height: 1px`) inserted right before it,
+   * watched by an `IntersectionObserver` rooted at its nearest scroll
+   * container. Fires only at the two stuck/unstuck transitions (see
+   * `handleStickyIntersection`).
    *
-   * The observer's `rootMargin` shrinks the root's effective top edge by
-   * `stickyAncestor`'s own resolved `top` offset. Without this, the
-   * sentinel — sitting flush against the sticky ancestor, at its natural
-   * pre-stuck position — would only cross the *unadjusted* root edge,
-   * which for any non-zero `top` is later (in scroll terms) than when the
-   * element actually starts sticking: stickiness kicks in as soon as the
-   * element's natural position would place it *above* its `top` offset,
-   * not only once it reaches the very edge. `getComputedStyle` already
-   * resolves `calc()`, `rem`, and CSS custom properties (e.g. Drupal
-   * core's `--drupal-displace-offset-top`) down to one final px number,
-   * so no manual unit math is needed here. Doing this via `rootMargin`
-   * rather than, say, a compensating margin on the sentinel itself avoids
-   * ever mutating the sentinel's own CSS, which would otherwise risk
-   * retriggering this module's own `MutationObserver`.
+   * `rootMargin` shrinks the root's top edge by `stickyAncestor`'s
+   * resolved `top` offset — otherwise the sentinel would only cross the
+   * unadjusted edge, later than stickiness actually kicks in.
+   * `getComputedStyle` already resolves `calc()`/custom properties to a
+   * final px value.
    *
-   * Known limitation: the offset is resolved once, here, at group-creation
-   * time. If it later changes (e.g. Drupal's toolbar tray opening/closing
-   * live-updates `--drupal-displace-offset-top`), this group's `rootMargin`
-   * goes stale until the group is torn down and recreated (e.g. via the
-   * element being removed and rediscovered) — not handled in this pass.
+   * Known limitation: the offset is resolved once, here. If it changes
+   * later (e.g. a toolbar tray live-updating an offset variable), this
+   * group's `rootMargin` goes stale until torn down and recreated.
    *
    * @param {Element} stickyAncestor The sticky element to track.
    * @returns {StickyGroup} The new, empty (no `members` yet) group.
@@ -694,14 +592,11 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
 
   /**
    * Applies a stuck/unstuck transition to every member of `group`.
-   * Revalidates that `stickyAncestor` is still actually CSS-`sticky`
-   * before honoring a "stuck" transition — the sentinel's intersection is
-   * pure scroll geometry and fires regardless of whether the ancestor is
-   * still sticky at that moment; without this check, a responsive
-   * breakpoint that toggles `sticky` off via a class swap would pin an
-   * overlay over an element that's actually back in ordinary flow. The
-   * sticky-specific analogue of `classifyPositionStrategy`'s marker
-   * revalidation for the fixed case.
+   * Revalidates `stickyAncestor` is still CSS-`sticky` before honoring a
+   * "stuck" transition — the sentinel's intersection is pure scroll
+   * geometry and fires regardless, so without this a breakpoint that
+   * toggles `sticky` off would pin an overlay over an element back in
+   * ordinary flow.
    *
    * @param {StickyGroup} group
    * @param {boolean} stuck Whether the sentinel signaled a transition to stuck.
@@ -761,70 +656,39 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
   }
 
   /**
-   * Keeps overlay layers aligned with their reference elements as the page
-   * changes, via four independent triggers:
-   *
-   * - `ResizeObserver` on each element's own `dataNode` — catches the
-   *   tracked element itself changing size.
-   * - `MutationObserver` on `document.documentElement` (not just
-   *   `document.body`'s own `style` attribute, the original scope) with
-   *   `childList`/`subtree`/`attributes` all watched — catches layout
-   *   shifts caused by *anything else* on the page: a lazy-loaded image
-   *   finishing, an injected ad/cookie-consent banner, an accordion
-   *   revealing a sibling, a class toggle. None of that resizes the
-   *   tracked element itself or touches `document.body`'s `style`
-   *   attribute specifically, so the original narrower scope missed all
-   *   of it. Rooted at `documentElement` rather than `body` so it also
-   *   covers attribute changes made on `<html>` itself (e.g. a
-   *   viewport-offset custom property some themes use) — `document.body`
-   *   is already inside `documentElement`'s subtree, so this is a strict
-   *   superset of the previous scope. Mutations inside `baseLayer` itself
-   *   are filtered out (see `scheduleSync`'s caller below) — otherwise
-   *   this module's own position writes would retrigger the observer
-   *   forever.
-   * - `transitionend` on `document` (capture phase, so it sees transitions
-   *   on any element) — some themes animate a layout shift (e.g. a
-   *   toolbar's `padding-top` transitioning open/closed) rather than
-   *   jumping straight to the new value. The mutation above fires the
-   *   instant the new value is *written*, which — mid-transition — is a
-   *   stale read; this catches the moment the animation actually
-   *   finishes.
-   * - `window` `load` and `document.fonts.ready` (each once) — both land
-   *   after the very first `positionLayer` call in `buildInstanceLayer`,
-   *   which runs as soon as the page's Drupal behaviors attach
-   *   (`DOMContentLoaded`) — well before either fonts or images/iframes
-   *   without reserved dimensions have necessarily finished loading and
-   *   reflowing the page. One extra full resync once each has settled
-   *   catches whatever the initial pass measured too early.
+   * Keeps overlay layers aligned with their reference elements via four
+   * independent triggers:
+   * - `ResizeObserver` on each `dataNode` — the tracked element resizing.
+   * - `MutationObserver` on `document.documentElement` (`childList`/
+   *   `subtree`/`attributes`) — layout shifts from anything else on the
+   *   page (lazy images, injected banners, class toggles). Mutations
+   *   inside `baseLayer` are filtered out, or this module's own position
+   *   writes would retrigger it forever.
+   * - `transitionend` on `document` (capture phase) — catches animated
+   *   layout shifts (e.g. a toolbar's `padding-top` transition) once they
+   *   finish; the mutation above fires on write, which is stale mid-transition.
+   * - `window` `load` and `document.fonts.ready` (each once) — one extra
+   *   resync after fonts/images without reserved dimensions finish
+   *   loading, since the first `positionLayer` call runs at
+   *   `DOMContentLoaded`, before those settle.
    *
    * Position sync (`scheduleSync`, rAF-coalesced) and content-change
-   * notification (`scheduleContentNotify`, debounced — see its own doc
-   * comment for why it deliberately runs on a different, much slower
-   * cadence) are two independently-triggered signals sharing the same
-   * `MutationObserver`, not one shared tick — repositioning wants ≤1-frame
-   * latency (visible jank otherwise), while "new content probably
-   * finished arriving" does not, and reusing the per-frame cadence for
-   * both would drive a full comment-tree rescan up to 60x/sec, forever,
-   * on any page with even one continuously-mutating widget (a carousel, a
-   * live-chat badge).
+   * notification (`scheduleContentNotify`, debounced) share the same
+   * `MutationObserver` but run on different cadences — repositioning
+   * wants ≤1-frame latency, while rescanning for new content doesn't, and
+   * sharing the per-frame cadence would drive a full rescan up to 60x/sec
+   * on any continuously-mutating page.
    *
    * @param {import('../model/themeElement.js').ThemeElement[]} elements
    *   Theme elements to keep aligned; each must already have both
    *   `instanceLayer` and `dataNode` set.
-   * @param {() => void} [onDomChanged] Forwarded from `createOverlayEngine`
-   *   — called (debounced) whenever a qualifying mutation suggests content
-   *   may have appeared/disappeared. Omitted entirely if not provided (no
-   *   timer ever gets scheduled).
+   * @param {() => void} [onDomChanged] Forwarded from `createOverlayEngine`.
    * @returns {{
    *   resizeObserver: ResizeObserver,
    *   mutationObserver: MutationObserver,
    *   disconnect: () => void,
-   * }} `resizeObserver`/`mutationObserver`, so the caller can `disconnect()`
-   *   them on `destroy()` as before, plus a `disconnect` function covering
-   *   the `transitionend`/`load` listeners and any pending scheduled
-   *   resync/notify — none of these are tied to an element this module
-   *   ever removes itself, so without tearing all of them down they'd keep
-   *   running (and keep this whole closure alive) forever.
+   * }} `disconnect` also covers the `transitionend`/`load` listeners and
+   *   any pending scheduled resync/notify.
    */
   function observePositionChanges(elements, onDomChanged) {
     let destroyed = false;
@@ -881,24 +745,17 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
     });
     elements.forEach((el) => resizeObserver.observe(el.dataNode));
 
-    // A single mutation batch can be relevant to position, to content
-    // discovery, both, or neither — checked once per mutation record
-    // rather than with two separate `.some()` passes over the same array.
+    // Checked once per mutation record: relevant to position, content
+    // discovery, both, or neither.
     const mutationObserver = new MutationObserver((mutations) => {
       let relevantForPosition = false;
       let relevantForContent = false;
 
       mutations.forEach((mutation) => {
         if (baseLayer.contains(mutation.target)) return;
-        // Inserting/removing a sticky-tracking sentinel (see
-        // `createStickyGroup`/`detachFromStickyGroup`) is a real childList
-        // mutation on a real page node — `mutation.target` there is the
-        // sentinel's *parent*, never the sentinel itself, so the
-        // `baseLayer.contains` check above can't catch it; check the
-        // actual added/removed nodes instead. Without this, every sticky
-        // group created/torn down would otherwise trigger a pointless
-        // position resync and a full comment-tree rescan for zero actual
-        // page content change.
+        // A sticky sentinel's insert/remove targets its *parent*, so the
+        // check above can't catch it — check the touched nodes instead,
+        // or every sentinel create/teardown triggers a pointless resync.
         const touchedNodes = [...mutation.addedNodes, ...mutation.removedNodes];
         if (touchedNodes.length > 0 && touchedNodes.every((node) => (
           node.nodeType === Node.ELEMENT_NODE && node.hasAttribute(LAYER_ATTRIBUTES.stickySentinelMarker)
@@ -906,10 +763,8 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
           return;
         }
         relevantForPosition = true;
-        // Attribute-only mutations (including the parser's own
-        // `data-vd-id` stamp on a just-matched node) can never introduce
-        // or remove a comment/element pairing, so they're excluded here —
-        // only a childList change with actual added/removed nodes counts.
+        // Attribute-only mutations (e.g. the parser's `data-vd-id` stamp)
+        // can't add/remove a comment/element pairing.
         if (mutation.type === 'childList' && (mutation.addedNodes.length > 0 || mutation.removedNodes.length > 0)) {
           relevantForContent = true;
         }
@@ -949,21 +804,12 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
 
   /**
    * Tears down everything this engine created: disconnects both observers
-   * plus the `transitionend`/`load`/`document.fonts.ready` triggers and
-   * any still-pending scheduled resync (`disconnectPositionObservers` —
-   * without this, they'd keep running against the real page forever, even
-   * after `baseLayer` is gone), removes `baseLayer` from the document
-   * (which takes every instance layer, and the mouseenter/mouseleave/click
-   * listeners attached directly to them, with it — those don't need
-   * separate removal since nothing outside this removed subtree
-   * references them), strips the `data-vd-id` attribute the parser left
-   * on each real page element, disconnects every remaining sticky group's
-   * `IntersectionObserver` and removes its sentinel from the document
-   * (mirroring the per-group teardown in `detachFromStickyGroup`, done in
-   * bulk here since every element is going away at once), and clears the
-   * `instanceLayer`/`listRow`/`stickyGroup` references each `themeElement`
-   * was carrying so a stale `themeElements` array a consumer might still
-   * be holding doesn't keep detached DOM/closures alive.
+   * and the `transitionend`/`load`/`fonts.ready` triggers
+   * (`disconnectPositionObservers`), removes `baseLayer` (taking every
+   * instance layer and its listeners with it), strips the parser's
+   * `data-vd-id` from each page element, tears down every sticky group,
+   * and clears the `instanceLayer`/row/`stickyGroup` references each
+   * `themeElement` carried.
    *
    * @returns {void}
    */

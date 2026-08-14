@@ -4,45 +4,32 @@ import { CLASS_NAMES } from '../constants.js';
  * Builds a small on/off switch: a wrapper div holding a (visually hidden,
  * pointer-events: none) checkbox, an "on" icon, an "off" icon, and an
  * optional label. The caller owns interaction — attach listeners to
- * `wrapper` directly (the input can't receive pointer events by design,
- * matching the original module's markup) and call `setChecked()` to keep
- * the visual state in sync with whatever triggered the change.
- *
- * Ported from the original module's Drupal.vdUtilities.generateOnOffSwitch,
- * trimmed to what the Items tab's rows/switches need: no generic
- * eventListeners array, no Drupal.t() coupling.
+ * `wrapper` directly (the input itself can't receive pointer events) and
+ * call `setChecked()` to sync the visual state.
  *
  * @param {object} [options]
  * @param {string} [options.label] Visible text label. When non-empty, a
- *   `<label for="...">` is created and associated with the switch's
- *   checkbox via a generated unique `id` (skipped entirely when omitted —
- *   e.g. the List tab's visibility eye toggle has no label of its own).
+ *   `<label for="...">` is created and associated via a generated unique
+ *   `id` (omitted entirely when there's no label, e.g. a bare eye toggle).
  * @param {boolean} [options.checked] Initial checked state.
- * @param {string[]} [options.wrapperClasses] Extra class names to add to
- *   the wrapper `<div>`, alongside the standard toggle-wrapper classes.
+ * @param {string[]} [options.wrapperClasses] Extra classes for the
+ *   wrapper `<div>`, alongside the standard toggle-wrapper classes.
  * @param {Record<string, string>} [options.wrapperAttributes] Extra
- *   `name: value` attribute pairs to set on the wrapper `<div>` (e.g.
- *   `data-vd-visible`).
- * @param {boolean} [options.labelFirst] Where to place the label relative
- *   to the checkbox/icons: appended after them (`true`, the default) or
- *   inserted before them (`false`).
+ *   `name: value` attributes for the wrapper `<div>` (e.g. `data-vd-visible`).
+ * @param {boolean} [options.labelFirst] Label after the checkbox/icons
+ *   (`true`, default) or before them (`false`).
  * @param {string} options.iconOn Icon class shown when checked.
  * @param {string} options.iconOff Icon class shown when unchecked.
- * @param {string} [options.iconBullet] Extra static icon class prepended before everything
- *   else (used by the Items tab's Grouped sub-view for its per-type color
+ * @param {string} [options.iconBullet] Extra static icon prepended before
+ *   everything else (used by the Grouped sub-view's per-type color
  *   swatch — see generateGroupSection).
  * @returns {{
  *   wrapper: Element,
  *   input: Element,
  *   setChecked: (checked: boolean) => void,
- * }} `wrapper` is the element to insert into the DOM and to attach
- *   interaction listeners to (the checkbox itself has `pointer-events:
- *   none` and can't be clicked directly — this matches the original
- *   module's markup). `input` is the underlying checkbox, exposed so
- *   callers can read `.checked`. `setChecked(value)` updates the checkbox
- *   and wrapper classes to reflect a new state without dispatching any
- *   DOM events — use it to sync this switch's visuals when the state
- *   changed for a reason other than the user clicking this exact switch.
+ * }} `wrapper` is the element to insert and attach listeners to. `input`
+ *   is the underlying checkbox, exposed for reading `.checked`.
+ *   `setChecked(value)` syncs the visuals without dispatching DOM events.
  */
 export function createOnOffSwitch({
   label = '',
@@ -93,10 +80,7 @@ export function createOnOffSwitch({
   );
 
   if (label) {
-    // Every switch needs its own id for the label association below —
-    // there can be many of these (one per Items tab row) — matching the
-    // original module's generateOnOffSwitch, which did the same via its own
-    // generateUniqueIdentifier().
+    // Unique id for the label association — many of these exist at once.
     input.id = `vd-switch-${Math.random().toString(36).substring(7)}`;
 
     const labelEl = document.createElement('label');

@@ -24,12 +24,10 @@ import { CLASS_NAMES, IDS, LAYER_ATTRIBUTES, STORAGE_KEYS } from './constants.js
  *   controllerLayer: Element,
  *   panel: ReturnType<typeof createControllerPanel>,
  *   destroy: () => void,
- * } | null} The parsed theme elements plus the overlay/panel roots that
- *   were appended to `document.body`, or `null` if `root` was already
- *   initialized (the no-op case above) — in which case nothing was
- *   built or appended. Call `destroy()` to fully tear this instance down
- *   (see its own doc comment) — after that, `init()` can be called again
- *   on the same `root` for a clean restart.
+ * } | null} The parsed theme elements plus the overlay/panel roots
+ *   appended to `document.body`, or `null` if `root` was already
+ *   initialized. `destroy()` tears the instance down; `init()` can then
+ *   be called again on the same `root`.
  */
 export function init(options = {}) {
   const root = options.root ?? document.body;
@@ -50,32 +48,19 @@ export function init(options = {}) {
 
   /**
    * Reconciliation policy for dynamically-added/removed content (Drupal
-   * AJAX commands, BigPipe placeholder swaps, or any other DOM mutation):
-   * passed as `onDomChanged` to `createOverlayEngine` below, and called
-   * (debounced — see `overlayLayer.js`'s `scheduleContentNotify`) whenever
-   * a qualifying mutation suggests something changed. Safe to reference
-   * `overlay`/`panel` here despite this function declaration appearing
-   * textually before either is constructed — it's hoisted, and it's never
-   * actually *called* until well after `init()` has returned (the
-   * earliest possible trigger is an async `MutationObserver`/`setTimeout`
-   * callback), by which point both are long since assigned.
+   * AJAX, BigPipe, or any other DOM mutation) — passed as `onDomChanged`
+   * to `createOverlayEngine` below. Referencing `overlay`/`panel` here is
+   * safe despite them not being constructed yet: this is hoisted and only
+   * called later, once both are assigned.
    *
-   * Re-parses `root` for newly-appeared elements — `parseThemeDebugElements`
-   * is idempotent across repeat calls on the same root (see its own doc
-   * comment), so this naturally only ever returns elements that weren't
-   * already tracked — and separately snapshots `themeElements` (the exact
-   * array both `overlay` and `panel` share a reference to) for entries
-   * whose `dataNode` is no longer connected to the document, the common
-   * outcome of both a BigPipe placeholder swap and an ordinary AJAX
-   * replace/remove command, to evict. `.filter` takes a fresh snapshot
-   * rather than iterating `themeElements` live, since `overlay
-   * .removeThemeElement` splices out of that same array as it goes.
+   * Re-parses `root` for new elements (idempotent, so already-tracked
+   * ones are skipped), and evicts entries whose `dataNode` is no longer
+   * connected. `.filter` snapshots `themeElements` first since
+   * `overlay.removeThemeElement` splices that same array as it goes.
    *
-   * Add order (overlay, then panel) mirrors `init()`'s own construction
-   * order just below. Remove order (panel, then overlay) is required in
-   * the other direction — panel's removal needs `listRow`/`instanceLayer`
-   * still intact to find and clean up the right row/active-state
-   * references; overlay's removal is what nulls them afterward.
+   * Add order (overlay, then panel) mirrors `init()`'s own construction.
+   * Remove order is reversed (panel, then overlay): panel's removal needs
+   * `listRow`/`instanceLayer` still intact; overlay's removal nulls them.
    *
    * @returns {void}
    */
@@ -102,13 +87,9 @@ export function init(options = {}) {
   panel.executePostActivation();
 
   /**
-   * Fully tears this instance down: disconnects the overlay's observers
-   * and removes its `baseLayer` (`overlay.destroy()`), removes the
-   * two `document`-level slider listeners and the body-offset observer
-   * and removes the panel's shadow host (`panel.destroy()`), and clears
-   * the `initialized` guard from `root` so a later `init()` call on the
-   * same `root` runs fresh instead of silently no-op'ing. Idempotent —
-   * every step it calls is safe to run more than once.
+   * Fully tears this instance down (`overlay.destroy()`, `panel.destroy()`)
+   * and clears the `initialized` guard so a later `init()` on the same
+   * `root` runs fresh.
    *
    * @returns {void}
    */

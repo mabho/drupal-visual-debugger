@@ -105,10 +105,8 @@ export const CLASS_NAMES = {
   tabActive: 'active',
   navTarget: 'nav-target',
 
-  // List tab (internal DOM vocabulary kept as-is even though the tab's
-  // rendered label is now "Items" — see defaultStrings.js's `tabItems` —
-  // since existing external CSS and querySelector call sites depend on
-  // these exact class/id names).
+  // Items tab (internal name "list" kept for external CSS/querySelector
+  // compatibility — see defaultStrings.js's `tabItems` for the label).
   listElement: 'list',
   listElementContent: 'list__content',
   listItem: 'list-item',
@@ -152,10 +150,8 @@ export const CLASS_NAMES = {
   groupedItemCollapsed: 'grouped-item--collapsed',
   groupedItemChildren: 'grouped-item__children',
 
-  // Shared per-type on/off switch styling — originally the Filters tab's
-  // own (that tab has since been removed entirely), kept because the
-  // Items tab's Grouped sub-view still reuses these exact classes
-  // verbatim for its own group switches (see generateGroupSection).
+  // Shared per-type on/off switch styling, reused verbatim by the Items
+  // tab's Grouped sub-view (see generateGroupSection).
   filtersElementItemActivation: 'filters-item__activation',
   iconSquare: 'icon-square',
   iconWithinContent: 'icon-within-content',
@@ -185,27 +181,17 @@ export const LAYER_ATTRIBUTES = {
   controllerActivated: 'data-controller-activated',
   visible: 'data-vd-visible',
   listItemActivated: 'data-vd-list-item-activated',
-  // Stamped on a tracked element's own `dataNode` once classified — see
-  // overlayLayer.js's `classifyPositionStrategy`. Value `'fixed'` means
-  // this element is itself `position: fixed`, or a descendant of a clean,
-  // viewport-anchored `position: fixed` ancestor; absent means the
-  // ordinary absolute+scroll-offset positioning applies. The only thing
-  // `positionLayer` reads on its hot path — a single attribute check, no
-  // ancestor walk.
+  // Set by `classifyPositionStrategy` (overlayLayer.js). `'fixed'` means
+  // the element is itself `position: fixed` or under a clean fixed
+  // ancestor; absent means ordinary absolute+scroll positioning.
   positionStrategy: 'data-vd-position-strategy',
-  // Internal short-circuit marker stamped on whichever ancestor element
-  // (not necessarily a tracked theme element itself) was confirmed to be
-  // a clean, viewport-anchored `position: fixed` containing block — lets
-  // later classification walks for *other* tracked elements sharing that
-  // same ancestor stop immediately instead of re-deriving it. Revalidated
-  // (not blindly trusted) on each use — see `classifyPositionStrategy`.
+  // Short-circuit marker on a confirmed clean fixed ancestor, so later
+  // classification walks for other elements can skip re-deriving it
+  // (revalidated, not blindly trusted — see `classifyPositionStrategy`).
   fixedContainingBlock: 'data-vd-fixed-root',
-  // Marks the tiny sentinel `<div>` overlayLayer.js's `createStickyGroup`
-  // inserts as a real sibling of a `position: sticky` ancestor, watched by
-  // an `IntersectionObserver` to detect stuck/unstuck transitions. Read by
-  // `observePositionChanges`'s `MutationObserver` filter so inserting/
-  // removing this element doesn't itself trigger a position resync or a
-  // full comment-tree rescan.
+  // Marks the sticky-tracking sentinel `<div>` (`createStickyGroup`) so
+  // `observePositionChanges`'s MutationObserver filter can ignore its
+  // insert/remove.
   stickySentinelMarker: 'data-vd-sticky-sentinel',
 };
 
