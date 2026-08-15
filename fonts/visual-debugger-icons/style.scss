@@ -3,9 +3,9 @@
 @font-face {
   font-family: '#{$icomoon-font-family}';
   src:
-    url('#{$icomoon-font-path}/#{$icomoon-font-family}.ttf?59d5qk') format('truetype'),
-    url('#{$icomoon-font-path}/#{$icomoon-font-family}.woff?59d5qk') format('woff'),
-    url('#{$icomoon-font-path}/#{$icomoon-font-family}.svg?59d5qk##{$icomoon-font-family}') format('svg');
+    url('#{$icomoon-font-path}/#{$icomoon-font-family}.ttf?otjb0a') format('truetype'),
+    url('#{$icomoon-font-path}/#{$icomoon-font-family}.woff?otjb0a') format('woff'),
+    url('#{$icomoon-font-path}/#{$icomoon-font-family}.svg?otjb0a##{$icomoon-font-family}') format('svg');
   font-weight: normal;
   font-style: normal;
   font-display: block;
@@ -26,14 +26,64 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-.icon-refresh-cw {
+.icon-clear {
   &:before {
-    content: $icon-refresh-cw; 
+    content: $icon-clear; 
   }
 }
-.icon-minus {
+.icon-content-copy {
   &:before {
-    content: $icon-minus; 
+    content: $icon-content-copy; 
+  }
+}
+.icon-circle-unchecked-outline {
+  &:before {
+    content: $icon-circle-unchecked-outline; 
+  }
+}
+.icon-visibility-on {
+  &:before {
+    content: $icon-visibility-on; 
+  }
+}
+.icon-cancel {
+  &:before {
+    content: $icon-cancel; 
+  }
+}
+.icon-check {
+  &:before {
+    content: $icon-check; 
+  }
+}
+.icon-arrow-right {
+  &:before {
+    content: $icon-arrow-right; 
+  }
+}
+.icon-box-checked {
+  &:before {
+    content: $icon-box-checked; 
+  }
+}
+.icon-box-unchecked {
+  &:before {
+    content: $icon-box-unchecked; 
+  }
+}
+.icon-circle-checked {
+  &:before {
+    content: $icon-circle-checked; 
+  }
+}
+.icon-visibility-off {
+  &:before {
+    content: $icon-visibility-off; 
+  }
+}
+.icon-circle-checked-outline {
+  &:before {
+    content: $icon-circle-checked-outline; 
   }
 }
 .icon-navigate-next {
