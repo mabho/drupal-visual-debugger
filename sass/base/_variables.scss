@@ -320,7 +320,7 @@ $color--shadow: $color--gray;
   --#{$prefix}controller--input--background-color: var(--#{$prefix}color--gray-10);
   --#{$prefix}controller--input--background-color--hover: var(--#{$prefix}color--gray-30);
   --#{$prefix}controller--input--border: solid #{functions.to-rem(2px)} var(--#{$prefix}color--gray-40);
-  --#{$prefix}controller--input--border--focus: solid #{functions.to-rem(2px)} var(--#{$prefix}--#{$prefix}color--mid-teal);
+  --#{$prefix}controller--input--border--focus: solid #{functions.to-rem(2px)} var(--#{$prefix}color--mid-teal);
   --#{$prefix}controller--input--border-radius: #{functions.to-rem(5px)};
   --#{$prefix}controller--input--font-family: var(--#{$prefix}font-family--monospace);
   --#{$prefix}controller--input--margin: 0;
