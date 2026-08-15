@@ -1,9 +1,9 @@
 @font-face {
   font-family: 'visual-debugger-icons';
   src:
-    url('fonts/visual-debugger-icons.ttf?59d5qk') format('truetype'),
-    url('fonts/visual-debugger-icons.woff?59d5qk') format('woff'),
-    url('fonts/visual-debugger-icons.svg?59d5qk#visual-debugger-icons') format('svg');
+    url('fonts/visual-debugger-icons.ttf?otjb0a') format('truetype'),
+    url('fonts/visual-debugger-icons.woff?otjb0a') format('woff'),
+    url('fonts/visual-debugger-icons.svg?otjb0a#visual-debugger-icons') format('svg');
   font-weight: normal;
   font-style: normal;
   font-display: block;
@@ -24,11 +24,41 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-.icon-refresh-cw:before {
-  content: "\e907";
+.icon-clear:before {
+  content: "\e90e";
 }
-.icon-minus:before {
+.icon-content-copy:before {
+  content: "\e90f";
+}
+.icon-circle-unchecked-outline:before {
   content: "\e909";
+}
+.icon-visibility-on:before {
+  content: "\e910";
+}
+.icon-cancel:before {
+  content: "\e911";
+}
+.icon-check:before {
+  content: "\e90b";
+}
+.icon-arrow-right:before {
+  content: "\e90c";
+}
+.icon-box-checked:before {
+  content: "\e912";
+}
+.icon-box-unchecked:before {
+  content: "\e913";
+}
+.icon-circle-checked:before {
+  content: "\e914";
+}
+.icon-visibility-off:before {
+  content: "\e90d";
+}
+.icon-circle-checked-outline:before {
+  content: "\e915";
 }
 .icon-navigate-next:before {
   content: "\e908";
