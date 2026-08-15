@@ -264,6 +264,15 @@
           white-space: nowrap;
         }
       }
+
+      // Cache Details — shown instead of Suggestions/Template File Path
+      // when a CacheElement, not a ThemeElement, is selected (see
+      // controllerPanel.js's setSelectedElementCacheDetails). Rows are
+      // `.content-copy-data`, same as Suggestions/File Path, so need no
+      // layout rule of their own beyond the shared wrapper spacing below.
+      &__cache-details-wrapper {
+        @extend %selected-item-wrapper;
+      }
     }
 
     // "No debug data" placeholder.
@@ -549,6 +558,49 @@
         padding: var(--#{variables.$prefix}list-element--list-item--activation--padding);
         position: relative;
         transition: background-color var(--#{variables.$prefix}transition-speed);
+      }
+    }
+
+    // Cache tab — a top-level tab (like Selected/Items), shown/hidden via
+    // the generic `.nav-target`/`.active` rule, not a sub-view switcher,
+    // so (unlike `.list`/`.branched`/`.grouped`) its `__content` needs no
+    // `:not(.active)` override of its own.
+    .cache {
+      background-color: var(--#{variables.$prefix}cache-element--background-color);
+      padding: var(--#{variables.$prefix}cache-element--padding);
+
+      &__content {
+        display: flex;
+        flex-direction: column;
+        gap: var(--#{variables.$prefix}cache-element--content--gap);
+      }
+
+      &-item {
+        display: flex;
+        flex-direction: column;
+        gap: var(--#{variables.$prefix}cache-item--gap);
+
+        &__header {
+          align-items: center;
+          column-gap: var(--#{variables.$prefix}list-element--list-item--gap);
+          display: flex;
+
+          // Reuses the Items tab's row switch styling verbatim (see
+          // buildRowControls in controllerPanel.js).
+          .list-item__activation {
+            flex: 1;
+          }
+        }
+
+        // A cache entry with no resolved page element (see
+        // drupalCacheDebugParser.js) — plain label, not a switch, since
+        // there's no overlay for it to show/select.
+        &__no-element {
+          border-radius: var(--#{variables.$prefix}controller--border-radius);
+          flex: 1;
+          padding: var(--#{variables.$prefix}list-element--list-item--activation--padding);
+        }
+
       }
     }
   }

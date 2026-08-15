@@ -1,5 +1,6 @@
 import { createEmptyThemeElement } from '../model/themeElement.js';
 import { LAYER_ATTRIBUTES } from '../constants.js';
+import { findBoundedElementSibling } from './boundedElementSibling.js';
 
 /**
  * The one part of the library that is genuinely Drupal-specific: reads
@@ -24,7 +25,8 @@ const RE_TEMPLATE_SUGGESTIONS = /FILE NAME SUGGESTIONS:\s*\n\s*([^']*)\s*\n*\s*/
 // i.e. almost every element on a real themed site. Both must match, or
 // every overridden template is silently dropped.
 const RE_TEMPLATE_FILE_PATH = /BEGIN(?: CUSTOM TEMPLATE)? OUTPUT from '([^']*)'/;
-// Reserved for future use (e.g. depth/nesting tracking); not consumed yet.
+// Bounds `findBoundedElementSibling`'s search below, so a hook that
+// renders zero elements can't overrun into a later, unrelated element.
 const RE_TEMPLATE_END_OUTPUT = /END(?: CUSTOM TEMPLATE)? OUTPUT from '([^']*)'/;
 
 /**
@@ -101,13 +103,13 @@ export function parseThemeDebugElements(root = document.body) {
     if (filePathMatch) {
       current.filePath = filePathMatch[1];
 
-      const dataNode = child.nextElementSibling;
+      const dataNode = findBoundedElementSibling(child, RE_TEMPLATE_FILE_PATH, RE_TEMPLATE_END_OUTPUT);
       // Guards against re-matching an element a previous call already
       // claimed, which would otherwise push a duplicate ThemeElement
       // every time `root` is rescanned.
       const alreadyMatched = dataNode?.hasAttribute(LAYER_ATTRIBUTES.layerId);
 
-      if (dataNode && dataNode.nodeType === Node.ELEMENT_NODE && !alreadyMatched) {
+      if (dataNode && !alreadyMatched) {
         current.dataNode = dataNode;
         current.id = `element-${Math.random().toString(36).substring(7)}`;
         dataNode.setAttribute(LAYER_ATTRIBUTES.layerId, current.id);
