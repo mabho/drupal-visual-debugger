@@ -108,6 +108,19 @@ export function createControllerPanel(options = {}) {
     return element !== null && 'cacheHit' in element;
   }
 
+  /**
+   * The label to show for a cache element, wherever it's identified:
+   * its own cache keys joined (e.g. `entity_view:node:1:full`) if
+   * present, else the Hit/Miss text (Drupal emits no keys on a hit).
+   *
+   * @param {import('../model/cacheElement.js').CacheElement} cacheElement
+   * @returns {string}
+   */
+  function getCacheElementLabel(cacheElement) {
+    if (cacheElement.keys && cacheElement.keys.length > 0) return cacheElement.keys.join(':');
+    return cacheElement.cacheHit ? strings.cacheHit : strings.cacheMiss;
+  }
+
   // ---- DOM builders ------------------------------------------------------
 
   /**
@@ -1181,10 +1194,7 @@ export function createControllerPanel(options = {}) {
     const header = document.createElement('div');
     header.classList.add(CLASS_NAMES.cacheItemHeader);
 
-    const hitOrMissLabel = cacheElement.cacheHit ? strings.cacheHit : strings.cacheMiss;
-    const label = cacheElement.keys && cacheElement.keys.length > 0
-      ? cacheElement.keys.join(':')
-      : hitOrMissLabel;
+    const label = getCacheElementLabel(cacheElement);
 
     if (cacheElement.dataNode) {
       const { activation, visibility, applyVisible } = buildRowControls(cacheElement, {
@@ -1341,7 +1351,7 @@ export function createControllerPanel(options = {}) {
     filePathWrapper.append(filePathTitle, filePath);
 
     // No static section title here, unlike its siblings above — each
-    // field (Cache Tags, Cache Contexts, ...) gets its own `<h3>` heading
+    // field (Cache Tags, Cache Contexts, ...) gets its own `<h4>` heading
     // instead, built dynamically by `appendCacheDetail`.
     const cacheDetailsWrapper = document.createElement('div');
     const cacheDetails = document.createElement('div');
@@ -1608,7 +1618,9 @@ export function createControllerPanel(options = {}) {
         CLASS_NAMES.elementInfoObjectType,
         `${CLASS_NAMES.elementInfoObjectType}--${themeElement.objectType}`,
       );
-      objectTypeText = themeElement.objectType;
+      // Color class stays keyed on the raw `objectType` (cache-hit/miss);
+      // the displayed text uses the same coherent label as the Cache tab.
+      objectTypeText = isCacheElement(themeElement) ? getCacheElementLabel(themeElement) : themeElement.objectType;
       wrapper.textContent = objectTypeText;
       targetLayer.append(wrapper);
     }
@@ -1697,6 +1709,7 @@ export function createControllerPanel(options = {}) {
     if (wrapper) wrapper.hidden = cacheElement === null;
     if (cacheElement === null) return;
 
+    appendCacheDetail(layer, strings.cacheHit, cacheElement.cacheHit === null ? null : [cacheElement.cacheHit ? 'Yes' : 'No']);
     appendCacheDetail(layer, strings.cacheTags, cacheElement.tags);
     appendCacheDetail(layer, strings.cacheContexts, cacheElement.contexts);
     appendCacheDetail(layer, strings.cacheKeys, cacheElement.keys);
