@@ -259,15 +259,6 @@
         }
       }
 
-      // Tempalte File Path.
-      &__template-file-path {
-        .label {
-          background-color: var(--#{variables.$prefix}color--light-gray);
-          padding: 0 calc(var(--#{variables.$prefix}controller--gutter) * .25);
-          white-space: nowrap;
-        }
-      }
-
       // Cache Details — shown instead of Suggestions/Template File Path
       // when a CacheElement, not a ThemeElement, is selected (see
       // controllerPanel.js's setSelectedElementCacheDetails).

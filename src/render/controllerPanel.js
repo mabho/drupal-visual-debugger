@@ -165,10 +165,10 @@ export function createControllerPanel(options = {}) {
       clipboardCopy(clipboardContent).then((succeeded) => {
         if (!succeeded) return;
         if (feedbackTimeoutId !== null) clearTimeout(feedbackTimeoutId);
-        clipboardButton.classList.replace(CLASS_NAMES.iconCopyToClipboard, CLASS_NAMES.iconSelectedTrue);
+        clipboardButton.classList.replace(CLASS_NAMES.iconCopyToClipboard, CLASS_NAMES.iconCheck);
         feedbackTimeoutId = setTimeout(() => {
           feedbackTimeoutId = null;
-          clipboardButton.classList.replace(CLASS_NAMES.iconSelectedTrue, CLASS_NAMES.iconCopyToClipboard);
+          clipboardButton.classList.replace(CLASS_NAMES.iconCheck, CLASS_NAMES.iconCopyToClipboard);
         }, DEFAULTS.copyFeedbackDuration);
       });
     });
@@ -1684,11 +1684,7 @@ export function createControllerPanel(options = {}) {
       return;
     }
 
-    const row = generateContentCopyData(
-      strings.filePath,
-      CLASS_NAMES.selectedElementTemplateFilePathLabel,
-      themeElement.filePath,
-    );
+    const row = generateContentCopyData(null, null, themeElement.filePath);
     target.appendChild(row);
   }
 

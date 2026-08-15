@@ -12,7 +12,6 @@ export const defaultStrings = {
   clickDragButton: 'Click and drag to resize',
   templateFilePath: 'Template File Path',
   folderPath: 'Folder path',
-  filePath: 'File path',
   activeElement: 'Active Element',
   noActiveElement: 'No active element.',
   noSelectedElement: 'No selected element.',

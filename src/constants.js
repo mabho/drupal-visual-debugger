@@ -63,7 +63,6 @@ export const CLASS_NAMES = {
   selectedElementSuggestions: 'selected-element__suggestions',
   selectedElementTemplateFilePathWrapper: 'selected-element__template-file-path-wrapper',
   selectedElementTemplateFilePath: 'selected-element__template-file-path',
-  selectedElementTemplateFilePathLabel: 'label',
   selectedElementCacheDetailsWrapper: 'selected-element__cache-details-wrapper',
   selectedElementCacheDetails: 'selected-element__cache-details',
   selectedElementCacheDetailsField: 'selected-element__cache-details__field',
@@ -78,6 +77,7 @@ export const CLASS_NAMES = {
   iconControllerActivated: 'icon-controller-activated',
   iconControllerDeactivated: 'icon-controller-deactivated',
   iconCopyToClipboard: 'icon-copy',
+  iconCheck: 'icon-circle-checked-outline',
   iconSlideResize: 'icon-slide-resize',
   // Icomoon's chevron/"navigate_next" glyph — used as the Branched
   // sub-view's disclosure control (see generateTreeItem), rotated via
