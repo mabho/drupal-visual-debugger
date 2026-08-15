@@ -338,7 +338,7 @@ $color--shadow: $color--gray;
   --#{$prefix}controller--input--padding: calc(var(--#{$prefix}controller--gutter) * .125) calc(var(--#{$prefix}controller--gutter) * .5);
 
   // Titles.
-  --#{$prefix}h--margin-bottom: calc(var(--#{$prefix}controller--gutter) * .5);
+  --#{$prefix}h--margin-bottom: calc(var(--#{$prefix}controller--gutter) * .25);
   --#{$prefix}h--margin-top: 0;
 
   // Controller Activation form.
