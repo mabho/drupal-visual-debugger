@@ -75,7 +75,6 @@
       border-radius: var(--#{variables.$prefix}controller--input--border-radius);
       flex: 1;
       font-family: var(--#{variables.$prefix}controller--input--font-family);
-      margin: var(--#{variables.$prefix}controller--input--margin);
       overflow: var(--#{variables.$prefix}controller--input--overflow);
       padding: var(--#{variables.$prefix}controller--input--padding);
       transition: background-color var(--#{variables.$prefix}transition-speed);
@@ -251,6 +250,10 @@
 
       // Suggestions.
       &__suggestions {
+        display: flex;
+        flex-direction: column;
+        gap: var(--#{variables.$prefix}selected-element--suggedtions--gap);
+
         &-wrapper {
           @extend %selected-item-wrapper;
         }
@@ -267,11 +270,23 @@
 
       // Cache Details — shown instead of Suggestions/Template File Path
       // when a CacheElement, not a ThemeElement, is selected (see
-      // controllerPanel.js's setSelectedElementCacheDetails). Rows are
-      // `.content-copy-data`, same as Suggestions/File Path, so need no
-      // layout rule of their own beyond the shared wrapper spacing below.
+      // controllerPanel.js's setSelectedElementCacheDetails).
       &__cache-details-wrapper {
         @extend %selected-item-wrapper;
+      }
+
+      &__cache-details {
+        display: flex;
+        flex-direction: column;
+        gap: var(--#{variables.$prefix}selected-element--cache-details--gap);
+
+        // One heading + its rows (see appendCacheDetail) — the gap above
+        // separates these from each other, not the rows within one.
+        &__field {
+          display: flex;
+          flex-direction: column;
+          gap: var(--#{variables.$prefix}selected-element--cache-details--field--gap);
+        }
       }
     }
 
@@ -711,7 +726,6 @@
     column-gap: var(--#{variables.$prefix}content-copy-data--column-gap);
     display: flex;
     flex-direction: var(--#{variables.$prefix}content-copy-data--flex-direction);
-    margin: var(--#{variables.$prefix}content-copy-data--margin);
 
     button {
       background-color: var(--#{variables.$prefix}content-copy-data--button--background-color);

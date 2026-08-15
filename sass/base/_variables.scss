@@ -299,6 +299,13 @@ $color--shadow: $color--gray;
   --#{$prefix}selected-element--padding: var(--#{$prefix}controller--gutter);
   --#{$prefix}selected-element--info--column-gap: calc(var(--#{$prefix}controller--gutter) * .5);
   --#{$prefix}selected-element--info--flex-direction: row;
+  --#{$prefix}selected-element--cache-details--gap: var(--#{$prefix}controller--gutter);
+
+  // Selected Element Suggestions.
+  --#{$prefix}selected-element--suggedtions--gap: calc(var(--#{$prefix}controller--gutter) * 0.125);
+
+  // Selected Element cache.
+  --#{$prefix}selected-element--cache-details--field--gap: calc(var(--#{$prefix}controller--gutter) * .125);
 
   // "No debug data" placeholder.
   --#{$prefix}empty-state--padding: var(--#{$prefix}controller--gutter);
@@ -314,7 +321,6 @@ $color--shadow: $color--gray;
   --#{$prefix}content-copy-data--align-items: center;
   --#{$prefix}content-copy-data--column-gap: calc(var(--#{$prefix}controller--gutter) * .25);
   --#{$prefix}content-copy-data--flex-direction: row;
-  --#{$prefix}content-copy-data--margin: calc(var(--#{$prefix}controller--gutter) * .25) 0;
 
   // Content copy data <button>.
   --#{$prefix}content-copy-data--button--background-color: transparent;
@@ -328,7 +334,6 @@ $color--shadow: $color--gray;
   --#{$prefix}controller--input--border--focus: solid #{functions.to-rem(2px)} var(--#{$prefix}color--mid-teal);
   --#{$prefix}controller--input--border-radius: #{functions.to-rem(5px)};
   --#{$prefix}controller--input--font-family: var(--#{$prefix}font-family--monospace);
-  --#{$prefix}controller--input--margin: 0;
   --#{$prefix}controller--input--overflow: hidden;
   --#{$prefix}controller--input--padding: calc(var(--#{$prefix}controller--gutter) * .125) calc(var(--#{$prefix}controller--gutter) * .5);
 
@@ -464,6 +469,8 @@ $color--shadow: $color--gray;
   --#{$prefix}cache-element--padding: var(--#{$prefix}controller--gutter);
   --#{$prefix}cache-element--content--gap: var(--#{$prefix}branched-element--content--gap);
   --#{$prefix}cache-item--gap: calc(var(--#{$prefix}controller--gutter) * .25);
+
+  // Cache details
 }
 
 $object-type-colors: (

@@ -1137,9 +1137,11 @@ export function createControllerPanel(options = {}) {
   // ---- Cache tab ------------------------------------------------------
 
   /**
-   * Appends an `<h3>` heading (`label`) plus one copyable, label-less
-   * row per entry in `values` (one value per row, never comma-joined);
-   * a no-op if `values` is empty/absent.
+   * Appends a field group to the Cache Details container: an `<h4>`
+   * heading (`label`) plus one copyable, label-less row per entry in
+   * `values` (one value per row, never comma-joined), wrapped in their
+   * own div so the container's flex gap visually separates field groups.
+   * A no-op if `values` is empty/absent.
    *
    * @param {Element} container The Cache Details container.
    * @param {string} label
@@ -1149,11 +1151,15 @@ export function createControllerPanel(options = {}) {
   function appendCacheDetail(container, label, values) {
     if (!values || values.length === 0) return;
 
-    const heading = document.createElement('h3');
-    heading.textContent = label;
-    container.appendChild(heading);
+    const field = document.createElement('div');
+    field.classList.add(CLASS_NAMES.selectedElementCacheDetailsField);
 
-    values.forEach((value) => container.appendChild(generateContentCopyData(null, null, value)));
+    const heading = document.createElement('h4');
+    heading.textContent = label;
+    field.appendChild(heading);
+
+    values.forEach((value) => field.appendChild(generateContentCopyData(null, null, value)));
+    container.appendChild(field);
   }
 
   /**
@@ -1211,9 +1217,42 @@ export function createControllerPanel(options = {}) {
   }
 
   /**
-   * Builds the "Cache" tab: one `generateCacheItem` row per cache-debug
-   * block found on the page, in document order. Only ever built when
-   * `cacheElements` is non-empty (see `generateTabsNavigation`).
+   * Builds the "All Elements" on/off switch for the Cache tab — same
+   * pure-batch-action pattern as `generateAllElementsRow`, reusing its
+   * classes verbatim. Only affects cache elements with a resolved
+   * `dataNode`, since the rest have no overlay to show/hide.
+   *
+   * @returns {Element} The row, not yet attached to the DOM.
+   */
+  function generateCacheAllElementsRow() {
+    const allItem = document.createElement('div');
+    allItem.classList.add(CLASS_NAMES.listElementItemSelectAll);
+
+    const allSwitch = createOnOffSwitch({
+      label: strings.allElements,
+      checked: true,
+      wrapperClasses: [CLASS_NAMES.listItemActivation],
+      iconOn: CLASS_NAMES.iconToggleOn,
+      iconOff: CLASS_NAMES.iconToggleOff,
+    });
+
+    allSwitch.wrapper.addEventListener('click', () => {
+      const next = !allSwitch.input.checked;
+      allSwitch.setChecked(next);
+      cacheElements
+        .filter((cacheElement) => cacheElement.dataNode)
+        .forEach((cacheElement) => cacheOverlay?.setThemeElementVisible(cacheElement, next));
+    });
+
+    allItem.appendChild(allSwitch.wrapper);
+    return allItem;
+  }
+
+  /**
+   * Builds the "Cache" tab: the shared "All Elements" switch, then one
+   * `generateCacheItem` row per cache-debug block found on the page, in
+   * document order. Only ever built when `cacheElements` is non-empty
+   * (see `generateTabsNavigation`).
    *
    * @returns {Element} The Cache tab panel, not yet attached to the DOM.
    */
@@ -1222,11 +1261,13 @@ export function createControllerPanel(options = {}) {
     layer.id = IDS.controllerElementCache;
     layer.classList.add(CLASS_NAMES.cacheElement, CLASS_NAMES.navTarget);
 
+    const allElementsRow = generateCacheAllElementsRow();
+
     const content = document.createElement('div');
     content.classList.add(CLASS_NAMES.cacheElementContent);
     cacheElements.forEach((cacheElement) => content.appendChild(generateCacheItem(cacheElement)));
 
-    layer.appendChild(content);
+    layer.append(allElementsRow, content);
     return layer;
   }
 

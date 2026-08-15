@@ -66,6 +66,7 @@ export const CLASS_NAMES = {
   selectedElementTemplateFilePathLabel: 'label',
   selectedElementCacheDetailsWrapper: 'selected-element__cache-details-wrapper',
   selectedElementCacheDetails: 'selected-element__cache-details',
+  selectedElementCacheDetailsField: 'selected-element__cache-details__field',
   contentCopyData: 'content-copy-data',
   contentCopyDataLabel: 'content-copy-data__label',
   iconSelectedTrue: 'icon-selected-true',
