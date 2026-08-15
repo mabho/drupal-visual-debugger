@@ -206,6 +206,11 @@ $color--shadow: $color--gray;
   --#{$prefix}color--object-type--username: var(--#{$prefix}color--dark-teal--rgb);
   --#{$prefix}color--object-type--views_view: var(--#{$prefix}color--dark-olive--rgb);
   --#{$prefix}color--object-type--views_view_unformatted: var(--#{$prefix}color--dark-forest--rgb);
+  // Cache tab — deliberately colors not used by any theme-element object
+  // type above, so a cache overlay is never visually confusable with a
+  // themed one when both happen to be on screen at once.
+  --#{$prefix}color--object-type--cache-hit: var(--#{$prefix}color--mid-green--rgb);
+  --#{$prefix}color--object-type--cache-miss: var(--#{$prefix}color--mid-red--rgb);
 
   --#{$prefix}color--shadow--rgb: #{functions.hex-to-rgb($color--shadow)};
 
@@ -294,6 +299,13 @@ $color--shadow: $color--gray;
   --#{$prefix}selected-element--padding: var(--#{$prefix}controller--gutter);
   --#{$prefix}selected-element--info--column-gap: calc(var(--#{$prefix}controller--gutter) * .5);
   --#{$prefix}selected-element--info--flex-direction: row;
+  --#{$prefix}selected-element--cache-details--gap: var(--#{$prefix}controller--gutter);
+
+  // Selected Element Suggestions.
+  --#{$prefix}selected-element--suggedtions--gap: calc(var(--#{$prefix}controller--gutter) * 0.125);
+
+  // Selected Element cache.
+  --#{$prefix}selected-element--cache-details--field--gap: calc(var(--#{$prefix}controller--gutter) * .125);
 
   // "No debug data" placeholder.
   --#{$prefix}empty-state--padding: var(--#{$prefix}controller--gutter);
@@ -309,7 +321,6 @@ $color--shadow: $color--gray;
   --#{$prefix}content-copy-data--align-items: center;
   --#{$prefix}content-copy-data--column-gap: calc(var(--#{$prefix}controller--gutter) * .25);
   --#{$prefix}content-copy-data--flex-direction: row;
-  --#{$prefix}content-copy-data--margin: calc(var(--#{$prefix}controller--gutter) * .25) 0;
 
   // Content copy data <button>.
   --#{$prefix}content-copy-data--button--background-color: transparent;
@@ -320,10 +331,9 @@ $color--shadow: $color--gray;
   --#{$prefix}controller--input--background-color: var(--#{$prefix}color--gray-10);
   --#{$prefix}controller--input--background-color--hover: var(--#{$prefix}color--gray-30);
   --#{$prefix}controller--input--border: solid #{functions.to-rem(2px)} var(--#{$prefix}color--gray-40);
-  --#{$prefix}controller--input--border--focus: solid #{functions.to-rem(2px)} var(--#{$prefix}--#{$prefix}color--mid-teal);
+  --#{$prefix}controller--input--border--focus: solid #{functions.to-rem(2px)} var(--#{$prefix}color--mid-teal);
   --#{$prefix}controller--input--border-radius: #{functions.to-rem(5px)};
   --#{$prefix}controller--input--font-family: var(--#{$prefix}font-family--monospace);
-  --#{$prefix}controller--input--margin: 0;
   --#{$prefix}controller--input--overflow: hidden;
   --#{$prefix}controller--input--padding: calc(var(--#{$prefix}controller--gutter) * .125) calc(var(--#{$prefix}controller--gutter) * .5);
 
@@ -453,6 +463,14 @@ $color--shadow: $color--gray;
   --#{$prefix}filters-element--filter-item--activation--line-height: 1.5;
   --#{$prefix}filters-element--filter-item--activation--justify-content: space-between;
   --#{$prefix}filters-element--filter-item--activation--padding: calc(var(--#{$prefix}controller--gutter) * .125) 0;
+
+  // Cache tab.
+  --#{$prefix}cache-element--background-color: var(--#{$prefix}list-element--background-color);
+  --#{$prefix}cache-element--padding: var(--#{$prefix}controller--gutter);
+  --#{$prefix}cache-element--content--gap: var(--#{$prefix}branched-element--content--gap);
+  --#{$prefix}cache-item--gap: calc(var(--#{$prefix}controller--gutter) * .25);
+
+  // Cache details
 }
 
 $object-type-colors: (
@@ -476,4 +494,6 @@ $object-type-colors: (
   'username': var(--#{$prefix}color--object-type--username),
   'views_view': var(--#{$prefix}color--object-type--views_view),
   'views_view_unformatted': var(--#{$prefix}color--object-type--views_view_unformatted),
+  'cache-hit': var(--#{$prefix}color--object-type--cache-hit),
+  'cache-miss': var(--#{$prefix}color--object-type--cache-miss),
 );

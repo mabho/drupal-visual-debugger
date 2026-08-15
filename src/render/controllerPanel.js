@@ -28,6 +28,14 @@ import panelStyles from '../../generated/panelStyles.css';
  * @param {ReturnType<typeof import('./overlayLayer.js').createOverlayEngine>} [options.overlay]
  *   Used by the Items tab to select/show/hide/hover a theme element's
  *   overlay without going through synthetic DOM click()s.
+ * @param {import('../model/cacheElement.js').CacheElement[]} [options.cacheElements]
+ *   Every cache-debug block found on the page — needed to build the Cache
+ *   tab. Independent of `themeElements`/`overlay` (see
+ *   `drupalCacheDebugParser.js`); the Cache tab only appears when non-empty.
+ * @param {ReturnType<typeof import('./overlayLayer.js').createOverlayEngine>} [options.cacheOverlay]
+ *   A second, independent overlay engine instance driving `cacheElements`'
+ *   overlays — only ever constructed over the subset with a resolved
+ *   `dataNode` (see `index.js`).
  * @returns {object} Controller panel instance (see bottom of file for shape).
  */
 export function createControllerPanel(options = {}) {
@@ -35,6 +43,8 @@ export function createControllerPanel(options = {}) {
   const strings = { ...defaultStrings, ...options.strings };
   const themeElements = options.themeElements ?? [];
   const overlay = options.overlay ?? null;
+  const cacheElements = options.cacheElements ?? [];
+  const cacheOverlay = options.cacheOverlay ?? null;
 
   let activeThemeElement = null;
   let defaultThemeElement = null;
@@ -73,14 +83,29 @@ export function createControllerPanel(options = {}) {
   let aggregateSwitchControl = null;
 
   /**
-   * The theme element the "Selected Element" panel should currently show:
-   * whatever's hovered takes priority over whatever's clicked/selected, and
-   * `null` if neither is set.
+   * The element the "Selected Element" panel should currently show —
+   * whatever's hovered takes priority over whatever's clicked/selected,
+   * and `null` if neither is set. Despite the name, this can hold a
+   * `CacheElement` just as well as a `ThemeElement`: both `overlay` and
+   * `cacheOverlay` report through this same panel via the same
+   * `ControllerHooks` interface (see `index.js`).
    *
-   * @returns {import('../model/themeElement.js').ThemeElement|null}
+   * @returns {import('../model/themeElement.js').ThemeElement|import('../model/cacheElement.js').CacheElement|null}
    */
   function getSelectedThemeElement() {
     return activeThemeElement || defaultThemeElement || null;
+  }
+
+  /**
+   * Is `element` a `CacheElement`? Distinguishes the two kinds of
+   * selectable element wherever `activeThemeElement`/`defaultThemeElement`
+   * is read, by checking for `cacheHit` rather than an explicit `kind` tag.
+   *
+   * @param {import('../model/themeElement.js').ThemeElement|import('../model/cacheElement.js').CacheElement|null} element
+   * @returns {boolean}
+   */
+  function isCacheElement(element) {
+    return element !== null && 'cacheHit' in element;
   }
 
   // ---- DOM builders ------------------------------------------------------
@@ -92,20 +117,28 @@ export function createControllerPanel(options = {}) {
    * `CLASS_NAMES.iconSelectedTrue`, then reverts.
    *
    * @param {string|null} itemLabel Visible label, or `null` (e.g.
-   *   suggestion rows use an icon instead).
-   * @param {string} itemLabelClass Class for the label wrapper.
+   *   suggestion rows use an icon instead, and per-value cache detail
+   *   rows have no label at all — see `appendCacheDetail`).
+   * @param {string|null} itemLabelClass Class for the label wrapper, or
+   *   `null` alongside a `null` `itemLabel` to skip the label wrapper
+   *   entirely rather than leaving an empty one in the row.
    * @param {string} itemContent Value shown in the input and copied.
    * @returns {Element} The row wrapper, not yet attached to the DOM.
    */
   function generateContentCopyData(itemLabel, itemLabelClass, itemContent) {
     const itemWrapper = document.createElement('div');
-    const itemLabelWrapper = document.createElement('div');
     const clipboardContent = document.createElement('input');
     const clipboardButton = document.createElement('button');
 
     itemWrapper.classList.add(CLASS_NAMES.contentCopyData);
-    itemLabelWrapper.classList.add(itemLabelClass);
-    itemLabelWrapper.textContent = itemLabel;
+
+    if (itemLabel || itemLabelClass) {
+      const itemLabelWrapper = document.createElement('div');
+      itemLabelWrapper.classList.add(itemLabelClass);
+      itemLabelWrapper.textContent = itemLabel;
+      itemWrapper.appendChild(itemLabelWrapper);
+    }
+
     clipboardContent.value = itemContent;
     clipboardContent.readOnly = true;
 
@@ -127,7 +160,7 @@ export function createControllerPanel(options = {}) {
       });
     });
 
-    itemWrapper.append(itemLabelWrapper, clipboardContent, clipboardButton);
+    itemWrapper.append(clipboardContent, clipboardButton);
     return itemWrapper;
   }
 
@@ -187,10 +220,13 @@ export function createControllerPanel(options = {}) {
   }
 
   /**
-   * Builds the tab bar (Selected / Items) and its bottom separator. Each
-   * button's click hands off to `switchToTab`; the "Selected" button
-   * also gets the `tabsNavigationTabSelected` class, which the CSS uses
-   * to show the object-type-colored cue dot that `setTabCue` maintains.
+   * Builds the tab bar (Selected / Items / Cache) and its bottom
+   * separator. Each button's click hands off to `switchToTab`; the
+   * "Selected" button also gets the `tabsNavigationTabSelected` class,
+   * which the CSS uses to show the object-type-colored cue dot that
+   * `setTabCue` maintains. The Cache tab is included only when
+   * `cacheElements` is non-empty — a page with render-cache debugging
+   * off has nothing for it to show.
    *
    * @returns {Element} The tab navigation bar, not yet attached to the DOM.
    */
@@ -214,6 +250,14 @@ export function createControllerPanel(options = {}) {
         targetId: IDS.controllerElementList,
       },
     ];
+
+    if (cacheElements.length > 0) {
+      tabs.push({
+        id: IDS.controllerButtonCache,
+        label: strings.tabCache,
+        targetId: IDS.controllerElementCache,
+      });
+    }
 
     tabs.forEach((tab) => {
       const button = document.createElement('button');
@@ -335,17 +379,22 @@ export function createControllerPanel(options = {}) {
 
   /**
    * Builds the activation (select/deselect) and visibility (show/hide)
-   * switches shared by all three Items sub-views' rows, plus the
-   * `applyVisible` sync function each registers as
-   * `listRow`/`treeRow`/`groupedRow`.setVisible.
+   * switches shared by all Items sub-view rows and the Cache tab's own
+   * rows, plus the `applyVisible` sync function each registers as its
+   * `listRow`/`treeRow`/`groupedRow`/`cacheRow`.setVisible. Generic over
+   * which overlay engine drives it and what the element actually is.
    *
-   * @param {import('../model/themeElement.js').ThemeElement} themeElement
-   *   The theme element this row represents.
+   * @param {{objectType: string|null}} element The element this row
+   *   represents — only `.objectType` is read directly here (for the
+   *   per-type color class); the rest is passed through opaquely to `overlay`.
    * @param {object} options
+   * @param {ReturnType<typeof import('./overlayLayer.js').createOverlayEngine>|null} options.overlay
+   *   The overlay engine instance driving this element.
+   * @param {string} options.label Activation switch label.
    * @param {boolean} options.initialSelected Real current selection state
-   *   — pass `overlay?.isThemeElementSelected(themeElement) ?? false`.
+   *   — pass `overlay?.isThemeElementSelected(element) ?? false`.
    * @param {boolean} options.initialVisible Real current visibility state
-   *   — pass `overlay?.isThemeElementVisible(themeElement) ?? true`.
+   *   — pass `overlay?.isThemeElementVisible(element) ?? true`.
    * @param {(visible: boolean) => void} [options.onVisibilityToggled]
    *   Run after the visibility switch's own click applies
    *   `overlay.setThemeElementVisible` — Branched rows use this to
@@ -357,11 +406,11 @@ export function createControllerPanel(options = {}) {
    *   applyVisible: (visible: boolean) => void,
    * }}
    */
-  function buildRowControls(themeElement, { initialSelected, initialVisible, onVisibilityToggled }) {
+  function buildRowControls(element, { overlay, label, initialSelected, initialVisible, onVisibilityToggled }) {
     const activation = createOnOffSwitch({
-      label: themeElement.propertyHook,
+      label,
       checked: initialSelected,
-      wrapperClasses: [CLASS_NAMES.listItemActivation, CLASS_NAMES.objectTypeTyped(themeElement.objectType)],
+      wrapperClasses: [CLASS_NAMES.listItemActivation, CLASS_NAMES.objectTypeTyped(element.objectType)],
       wrapperAttributes: { [LAYER_ATTRIBUTES.visible]: String(initialVisible) },
       iconOn: CLASS_NAMES.iconSelectedTrue,
       iconOff: CLASS_NAMES.iconSelectedFalse,
@@ -372,11 +421,11 @@ export function createControllerPanel(options = {}) {
       // (Branched only) by a hidden ancestor's cascade, shouldn't be
       // selectable.
       if (activation.wrapper.getAttribute(LAYER_ATTRIBUTES.visible) === 'true') {
-        overlay?.toggleThemeElementSelection(themeElement);
+        overlay?.toggleThemeElementSelection(element);
       }
     });
-    activation.wrapper.addEventListener('mouseenter', () => overlay?.hoverThemeElement(themeElement));
-    activation.wrapper.addEventListener('mouseleave', () => overlay?.unhoverThemeElement(themeElement));
+    activation.wrapper.addEventListener('mouseenter', () => overlay?.hoverThemeElement(element));
+    activation.wrapper.addEventListener('mouseleave', () => overlay?.unhoverThemeElement(element));
 
     const visibility = createOnOffSwitch({
       checked: initialVisible,
@@ -388,7 +437,7 @@ export function createControllerPanel(options = {}) {
     /**
      * Syncs this row's visibility switch + disabled look, without
      * touching the overlay — used by this row's own click and by
-     * listRow/treeRow/groupedRow.setVisible.
+     * listRow/treeRow/groupedRow/cacheRow.setVisible.
      *
      * @param {boolean} visible New visibility state to reflect.
      * @returns {void}
@@ -402,7 +451,7 @@ export function createControllerPanel(options = {}) {
     visibility.wrapper.addEventListener('click', () => {
       const nextVisible = !visibility.input.checked;
       applyVisible(nextVisible);
-      overlay?.setThemeElementVisible(themeElement, nextVisible);
+      overlay?.setThemeElementVisible(element, nextVisible);
       onVisibilityToggled?.(nextVisible);
     });
 
@@ -441,6 +490,8 @@ export function createControllerPanel(options = {}) {
     item.classList.add(CLASS_NAMES.listItem);
 
     const { activation, visibility, applyVisible } = buildRowControls(themeElement, {
+      overlay,
+      label: themeElement.propertyHook,
       initialSelected: overlay?.isThemeElementSelected(themeElement) ?? false,
       initialVisible: overlay?.isThemeElementVisible(themeElement) ?? true,
     });
@@ -621,6 +672,8 @@ export function createControllerPanel(options = {}) {
     }
 
     const { activation, visibility, applyVisible } = buildRowControls(themeElement, {
+      overlay,
+      label: themeElement.propertyHook,
       initialSelected: overlay?.isThemeElementSelected(themeElement) ?? false,
       initialVisible: overlay?.isThemeElementVisible(themeElement) ?? true,
       onVisibilityToggled: (visible) => cascadeVisibilityToDescendants(themeElement, visible, childrenOf),
@@ -804,6 +857,8 @@ export function createControllerPanel(options = {}) {
     item.classList.add(CLASS_NAMES.listItem);
 
     const { activation, visibility, applyVisible } = buildRowControls(themeElement, {
+      overlay,
+      label: themeElement.propertyHook,
       initialSelected: overlay?.isThemeElementSelected(themeElement) ?? false,
       initialVisible: overlay?.isThemeElementVisible(themeElement) ?? true,
     });
@@ -1079,6 +1134,143 @@ export function createControllerPanel(options = {}) {
     });
   }
 
+  // ---- Cache tab ------------------------------------------------------
+
+  /**
+   * Appends a field group to the Cache Details container: an `<h4>`
+   * heading (`label`) plus one copyable, label-less row per entry in
+   * `values` (one value per row, never comma-joined), wrapped in their
+   * own div so the container's flex gap visually separates field groups.
+   * A no-op if `values` is empty/absent.
+   *
+   * @param {Element} container The Cache Details container.
+   * @param {string} label
+   * @param {string[]|null} values
+   * @returns {void}
+   */
+  function appendCacheDetail(container, label, values) {
+    if (!values || values.length === 0) return;
+
+    const field = document.createElement('div');
+    field.classList.add(CLASS_NAMES.selectedElementCacheDetailsField);
+
+    const heading = document.createElement('h4');
+    heading.textContent = label;
+    field.appendChild(heading);
+
+    values.forEach((value) => field.appendChild(generateContentCopyData(null, null, value)));
+    container.appendChild(field);
+  }
+
+  /**
+   * Builds one Cache-tab row for `cacheElement`. With a real `dataNode`,
+   * gets activation/visibility switches (`buildRowControls`, driven by
+   * `cacheOverlay`); otherwise a plain non-interactive label. Selecting
+   * shows details in the Selected Element panel, like an Items tab row.
+   * Label is `cacheElement.keys` joined (e.g. `entity_view:node:1:full`)
+   * when present, since every row would otherwise read "Cache Miss" —
+   * falls back to the Hit/Miss text on a cache hit (no keys emitted then).
+   *
+   * @param {import('../model/cacheElement.js').CacheElement} cacheElement
+   * @returns {Element} The row, not yet attached to the DOM.
+   */
+  function generateCacheItem(cacheElement) {
+    const item = document.createElement('div');
+    item.classList.add(CLASS_NAMES.cacheItem);
+
+    const header = document.createElement('div');
+    header.classList.add(CLASS_NAMES.cacheItemHeader);
+
+    const hitOrMissLabel = cacheElement.cacheHit ? strings.cacheHit : strings.cacheMiss;
+    const label = cacheElement.keys && cacheElement.keys.length > 0
+      ? cacheElement.keys.join(':')
+      : hitOrMissLabel;
+
+    if (cacheElement.dataNode) {
+      const { activation, visibility, applyVisible } = buildRowControls(cacheElement, {
+        overlay: cacheOverlay,
+        label,
+        initialSelected: cacheOverlay?.isThemeElementSelected(cacheElement) ?? false,
+        initialVisible: cacheOverlay?.isThemeElementVisible(cacheElement) ?? true,
+      });
+
+      cacheElement.cacheRow = {
+        setActivated: (checked) => {
+          activation.setChecked(checked);
+          if (checked) scrollRowIntoView(item);
+        },
+        setVisible: applyVisible,
+        remove: () => item.remove(),
+      };
+
+      header.append(activation.wrapper, visibility.wrapper);
+    } else {
+      const noElementLabel = document.createElement('div');
+      noElementLabel.classList.add(CLASS_NAMES.cacheItemNoElement, CLASS_NAMES.objectType, CLASS_NAMES.objectTypeTyped(cacheElement.objectType));
+      noElementLabel.textContent = label;
+      noElementLabel.title = strings.noElementForCacheEntry;
+      header.append(noElementLabel);
+    }
+
+    item.appendChild(header);
+    return item;
+  }
+
+  /**
+   * Builds the "All Elements" on/off switch for the Cache tab — same
+   * pure-batch-action pattern as `generateAllElementsRow`, reusing its
+   * classes verbatim. Only affects cache elements with a resolved
+   * `dataNode`, since the rest have no overlay to show/hide.
+   *
+   * @returns {Element} The row, not yet attached to the DOM.
+   */
+  function generateCacheAllElementsRow() {
+    const allItem = document.createElement('div');
+    allItem.classList.add(CLASS_NAMES.listElementItemSelectAll);
+
+    const allSwitch = createOnOffSwitch({
+      label: strings.allElements,
+      checked: true,
+      wrapperClasses: [CLASS_NAMES.listItemActivation],
+      iconOn: CLASS_NAMES.iconToggleOn,
+      iconOff: CLASS_NAMES.iconToggleOff,
+    });
+
+    allSwitch.wrapper.addEventListener('click', () => {
+      const next = !allSwitch.input.checked;
+      allSwitch.setChecked(next);
+      cacheElements
+        .filter((cacheElement) => cacheElement.dataNode)
+        .forEach((cacheElement) => cacheOverlay?.setThemeElementVisible(cacheElement, next));
+    });
+
+    allItem.appendChild(allSwitch.wrapper);
+    return allItem;
+  }
+
+  /**
+   * Builds the "Cache" tab: the shared "All Elements" switch, then one
+   * `generateCacheItem` row per cache-debug block found on the page, in
+   * document order. Only ever built when `cacheElements` is non-empty
+   * (see `generateTabsNavigation`).
+   *
+   * @returns {Element} The Cache tab panel, not yet attached to the DOM.
+   */
+  function generateCacheTab() {
+    const layer = document.createElement('div');
+    layer.id = IDS.controllerElementCache;
+    layer.classList.add(CLASS_NAMES.cacheElement, CLASS_NAMES.navTarget);
+
+    const allElementsRow = generateCacheAllElementsRow();
+
+    const content = document.createElement('div');
+    content.classList.add(CLASS_NAMES.cacheElementContent);
+    cacheElements.forEach((cacheElement) => content.appendChild(generateCacheItem(cacheElement)));
+
+    layer.append(allElementsRow, content);
+    return layer;
+  }
+
   /**
    * Builds the "no debug data" placeholder shown instead of the tab bar
    * when `themeElements` is empty — e.g. the Chrome extension activated
@@ -1107,9 +1299,11 @@ export function createControllerPanel(options = {}) {
   }
 
   /**
-   * Builds the "Selected Element" panel: basic info (object type +
-   * property hook), theme suggestions, and template file path — each an
-   * empty container populated later by `updateSelectedElement`.
+   * Builds the "Selected Element" panel: basic info, theme suggestions,
+   * template file path, and cache details — empty containers populated
+   * later by `updateSelectedElement`. The last three are mutually
+   * exclusive: a `ThemeElement` fills suggestions/file path, a
+   * `CacheElement` fills cache details, never both.
    *
    * @returns {Element} The panel, not yet attached to the DOM.
    */
@@ -1146,7 +1340,17 @@ export function createControllerPanel(options = {}) {
     filePathTitle.textContent = strings.templateFilePath;
     filePathWrapper.append(filePathTitle, filePath);
 
-    layer.append(infoWrapper, suggestionsWrapper, filePathWrapper);
+    // No static section title here, unlike its siblings above — each
+    // field (Cache Tags, Cache Contexts, ...) gets its own `<h3>` heading
+    // instead, built dynamically by `appendCacheDetail`.
+    const cacheDetailsWrapper = document.createElement('div');
+    const cacheDetails = document.createElement('div');
+    cacheDetailsWrapper.classList.add(CLASS_NAMES.selectedElementCacheDetailsWrapper);
+    cacheDetails.id = IDS.controllerElementCacheDetails;
+    cacheDetails.classList.add(CLASS_NAMES.selectedElementCacheDetails);
+    cacheDetailsWrapper.appendChild(cacheDetails);
+
+    layer.append(infoWrapper, suggestionsWrapper, filePathWrapper, cacheDetailsWrapper);
     return layer;
   }
 
@@ -1208,6 +1412,10 @@ export function createControllerPanel(options = {}) {
         generateSelectedElementLayer(),
         generateItemsTab(),
       );
+      // Gated on `themeElements`, not `cacheElements`, alongside the rest
+      // of the tab UI above — a page with render-cache debugging on but
+      // Twig debugging off still falls into the plain empty-state message.
+      if (cacheElements.length > 0) content.appendChild(generateCacheTab());
     } else {
       content.append(generateEmptyStateLayer());
     }
@@ -1414,23 +1622,21 @@ export function createControllerPanel(options = {}) {
   }
 
   /**
-   * Renders the currently-selected element's theme suggestions list (one
-   * copyable row per suggestion, marked activated/not) into the Selected
-   * Element panel. Reads `defaultThemeElement` directly rather than taking
-   * a parameter, since it's always this panel's own selection state.
+   * Renders the selected element's theme suggestions (one copyable row
+   * per suggestion, marked activated/not). Hides the whole section
+   * (title included) when nothing, or a `CacheElement`, is selected.
    *
    * @returns {void}
    */
   function setSelectedElementSuggestions() {
-    const themeElement = defaultThemeElement;
+    const themeElement = isCacheElement(defaultThemeElement) ? null : defaultThemeElement;
+    const wrapper = panelRoot.querySelector(`.${CLASS_NAMES.selectedElementSuggestionsWrapper}`);
     const layer = panelRoot.querySelector(`#${IDS.controllerElementSuggestions}`);
     if (!layer) return;
     layer.innerHTML = '';
 
-    if (themeElement === null) {
-      layer.append(generateEmptyTag('selected'));
-      return;
-    }
+    if (wrapper) wrapper.hidden = themeElement === null;
+    if (themeElement === null) return;
 
     (themeElement.suggestions || []).forEach((item) => {
       const row = generateContentCopyData(
@@ -1444,17 +1650,24 @@ export function createControllerPanel(options = {}) {
 
   /**
    * Renders the selected element's template file path as a copyable row
-   * (or the empty-state tag if none).
+   * (or the empty-state tag if a real `ThemeElement` is selected but
+   * happens to have none). Same self-hiding behavior as
+   * `setSelectedElementSuggestions` when nothing, or a `CacheElement`, is
+   * selected instead.
    *
    * @returns {void}
    */
   function setSelectedElementTemplateFilePath() {
-    const themeElement = defaultThemeElement;
+    const themeElement = isCacheElement(defaultThemeElement) ? null : defaultThemeElement;
+    const wrapper = panelRoot.querySelector(`.${CLASS_NAMES.selectedElementTemplateFilePathWrapper}`);
     const target = panelRoot.querySelector(`#${IDS.controllerElementTemplateFilePath}`);
     if (!target) return;
     target.innerHTML = '';
 
-    if (themeElement === null || !themeElement.filePath) {
+    if (wrapper) wrapper.hidden = themeElement === null;
+    if (themeElement === null) return;
+
+    if (!themeElement.filePath) {
       target.append(generateEmptyTag('selected'));
       return;
     }
@@ -1465,6 +1678,34 @@ export function createControllerPanel(options = {}) {
       themeElement.filePath,
     );
     target.appendChild(row);
+  }
+
+  /**
+   * Renders the selected cache element's metadata (tags/contexts/keys/
+   * max-age/pre-bubbling variants/rendering time). Hides the whole
+   * section when nothing, or a `ThemeElement`, is selected instead.
+   *
+   * @returns {void}
+   */
+  function setSelectedElementCacheDetails() {
+    const cacheElement = isCacheElement(defaultThemeElement) ? defaultThemeElement : null;
+    const wrapper = panelRoot.querySelector(`.${CLASS_NAMES.selectedElementCacheDetailsWrapper}`);
+    const layer = panelRoot.querySelector(`#${IDS.controllerElementCacheDetails}`);
+    if (!layer) return;
+    layer.innerHTML = '';
+
+    if (wrapper) wrapper.hidden = cacheElement === null;
+    if (cacheElement === null) return;
+
+    appendCacheDetail(layer, strings.cacheTags, cacheElement.tags);
+    appendCacheDetail(layer, strings.cacheContexts, cacheElement.contexts);
+    appendCacheDetail(layer, strings.cacheKeys, cacheElement.keys);
+    appendCacheDetail(layer, strings.cacheMaxAge, cacheElement.maxAge ? [cacheElement.maxAge] : null);
+    appendCacheDetail(layer, strings.preBubblingCacheTags, cacheElement.preBubblingTags);
+    appendCacheDetail(layer, strings.preBubblingCacheContexts, cacheElement.preBubblingContexts);
+    appendCacheDetail(layer, strings.preBubblingCacheKeys, cacheElement.preBubblingKeys);
+    appendCacheDetail(layer, strings.preBubblingCacheMaxAge, cacheElement.preBubblingMaxAge ? [cacheElement.preBubblingMaxAge] : null);
+    appendCacheDetail(layer, strings.renderingTime, cacheElement.renderingTime ? [cacheElement.renderingTime] : null);
   }
 
   /**
@@ -1482,9 +1723,11 @@ export function createControllerPanel(options = {}) {
 
   /**
    * Refreshes everything driven by `defaultThemeElement` (the currently
-   * selected theme element, or `null`): the Selected Element panel's basic
-   * info, suggestions, and file path, plus the Selected tab's color cue.
-   * Call after changing `defaultThemeElement`.
+   * selected element — a `ThemeElement`, a `CacheElement`, or `null`):
+   * the Selected Element panel's basic info, plus whichever of
+   * suggestions/file path (`ThemeElement`) or cache details
+   * (`CacheElement`) applies — the other pair renders empty — and the
+   * Selected tab's color cue. Call after changing `defaultThemeElement`.
    *
    * @returns {void}
    */
@@ -1494,6 +1737,7 @@ export function createControllerPanel(options = {}) {
     setElementInfo(defaultThemeElement, layer, 'selected');
     setSelectedElementSuggestions();
     setSelectedElementTemplateFilePath();
+    setSelectedElementCacheDetails();
     setTabCue();
   }
 
@@ -1544,14 +1788,19 @@ export function createControllerPanel(options = {}) {
   }
 
   /**
-   * `ControllerHooks.setDefaultThemeElement` — a theme element became the
-   * selected element.
+   * `ControllerHooks.setDefaultThemeElement` — a theme *or cache* element
+   * became selected (both `overlay` and `cacheOverlay` report through
+   * this hook). Each engine only enforces single selection within its
+   * own array, so deselects the other kind here if it was selected.
    *
-   * @param {import('../model/themeElement.js').ThemeElement} themeElement
+   * @param {import('../model/themeElement.js').ThemeElement|import('../model/cacheElement.js').CacheElement} element
    * @returns {void}
    */
-  function setDefaultThemeElement(themeElement) {
-    defaultThemeElement = themeElement;
+  function setDefaultThemeElement(element) {
+    if (defaultThemeElement && isCacheElement(defaultThemeElement) !== isCacheElement(element)) {
+      (isCacheElement(defaultThemeElement) ? cacheOverlay : overlay)?.toggleThemeElementSelection(defaultThemeElement);
+    }
+    defaultThemeElement = element;
     updateSelectedElement();
   }
 
@@ -1632,6 +1881,50 @@ export function createControllerPanel(options = {}) {
   }
 
   /**
+   * Incorporates a cache element discovered after construction. `index.js`
+   * pushes it to the shared `cacheElements` array before calling this. If
+   * the Cache tab wasn't built yet (only built at construction when
+   * `cacheElements` was already non-empty), adds its nav button and
+   * builds the tab fresh instead of just appending a row.
+   *
+   * @param {import('../model/cacheElement.js').CacheElement} cacheElement
+   * @returns {void}
+   */
+  function addCacheElement(cacheElement) {
+    const existingContent = panelRoot.querySelector(`#${IDS.controllerElementCache} .${CLASS_NAMES.cacheElementContent}`);
+    if (existingContent) {
+      existingContent.appendChild(generateCacheItem(cacheElement));
+      return;
+    }
+
+    const tabsRow = panelRoot.querySelector(`.${CLASS_NAMES.tabsNavigationTabs}`);
+    if (tabsRow) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.id = IDS.controllerButtonCache;
+      button.setAttribute('data-target-tab', IDS.controllerElementCache);
+      button.setAttribute('aria-label', strings.tabCache);
+      button.classList.add(CLASS_NAMES.tabsNavigationTab);
+      button.textContent = strings.tabCache;
+      button.addEventListener('click', () => switchToTab(IDS.controllerElementCache));
+      tabsRow.appendChild(button);
+    }
+    panelRoot.querySelector(`.${CLASS_NAMES.content}`)?.appendChild(generateCacheTab());
+  }
+
+  /**
+   * Reverses `addCacheElement`. Call BEFORE `cacheOverlay`'s own
+   * `removeThemeElement` (if this element had one), same as
+   * `removeThemeElement` requires for `overlayLayer.js`.
+   *
+   * @param {import('../model/cacheElement.js').CacheElement} cacheElement
+   * @returns {void}
+   */
+  function removeCacheElement(cacheElement) {
+    cacheElement.cacheRow?.remove();
+  }
+
+  /**
    * One-time setup that must run after the panel's DOM is attached (so
    * `getBoundingClientRect`/computed styles are meaningful): resize
    * handle, panel sizing/position, initial Active/Selected panels, and
@@ -1687,6 +1980,8 @@ export function createControllerPanel(options = {}) {
     getSelectedThemeElement,
     addThemeElement,
     removeThemeElement,
+    addCacheElement,
+    removeCacheElement,
     destroy,
   };
 }

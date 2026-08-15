@@ -64,6 +64,9 @@ export const CLASS_NAMES = {
   selectedElementTemplateFilePathWrapper: 'selected-element__template-file-path-wrapper',
   selectedElementTemplateFilePath: 'selected-element__template-file-path',
   selectedElementTemplateFilePathLabel: 'label',
+  selectedElementCacheDetailsWrapper: 'selected-element__cache-details-wrapper',
+  selectedElementCacheDetails: 'selected-element__cache-details',
+  selectedElementCacheDetailsField: 'selected-element__cache-details__field',
   contentCopyData: 'content-copy-data',
   contentCopyDataLabel: 'content-copy-data__label',
   iconSelectedTrue: 'icon-selected-true',
@@ -155,6 +158,16 @@ export const CLASS_NAMES = {
   filtersElementItemActivation: 'filters-item__activation',
   iconSquare: 'icon-square',
   iconWithinContent: 'icon-within-content',
+
+  // Cache tab — independent of the Items tab (own parser, own model, own
+  // overlay engine instance; see drupalCacheDebugParser.js).
+  cacheElement: 'cache',
+  cacheElementContent: 'cache__content',
+  cacheItem: 'cache-item',
+  cacheItemHeader: 'cache-item__header',
+  cacheItemActivation: 'cache-item__activation',
+  cacheItemVisibility: 'cache-item__visibility',
+  cacheItemNoElement: 'cache-item__no-element',
 };
 
 export const IDS = {
@@ -168,15 +181,22 @@ export const IDS = {
   controllerElementInfo: 'visual-debugger--controller-layer--info',
   controllerElementSuggestions: 'visual-debugger--controller-layer--suggestions',
   controllerElementTemplateFilePath: 'visual-debugger--controller-layer--template-file-path',
+  controllerElementCacheDetails: 'visual-debugger--controller-layer--cache-details',
   controllerActivationCheckbox: 'debuggerActivationCheckbox',
   controllerButtonSelected: 'visual-debugger--controller-layer--button--selected',
   controllerElementSelected: 'visual-debugger--controller-layer--selected',
   controllerButtonList: 'visual-debugger--controller-layer--button--list',
   controllerElementList: 'visual-debugger--controller-layer--list',
+  controllerButtonCache: 'visual-debugger--controller-layer--button--cache',
+  controllerElementCache: 'visual-debugger--controller-layer--cache',
 };
 
 export const LAYER_ATTRIBUTES = {
   layerId: 'data-vd-id',
+  // A DOM node can be both a themed element and a cached render array at
+  // once, so CacheElement's dedup marker (drupalCacheDebugParser.js) is
+  // kept separate from `layerId` rather than reusing it.
+  cacheLayerId: 'data-vd-cache-id',
   layerTargetId: 'data-vd-target-id',
   controllerActivated: 'data-controller-activated',
   visible: 'data-vd-visible',

@@ -161,13 +161,12 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
     if (checked) checkbox.focus();
     else checkbox.blur();
 
-    // All three sub-views of the Items tab (Listed, Branched, Grouped)
-    // can have a live row for the same themeElement at once — notify
-    // every slot, not just one, or whichever sub-view isn't currently
-    // registered here silently stops receiving updates.
+    // Every sub-view/tab that can have a live row for this element at
+    // once needs notifying, or an unregistered one silently goes stale.
     themeElement.listRow?.setActivated(checked);
     themeElement.treeRow?.setActivated(checked);
     themeElement.groupedRow?.setActivated(checked);
+    themeElement.cacheRow?.setActivated(checked);
 
     if (checked) controllerHooks?.setDefaultThemeElement(themeElement);
     else controllerHooks?.resetDefaultThemeElement();
@@ -200,11 +199,12 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
     if (!visible && isChecked(themeElement)) setChecked(themeElement, false);
     themeElement.instanceLayer.setAttribute(LAYER_ATTRIBUTES.visible, String(visible));
     // See the equivalent comment in `setChecked` — `listRow`, `treeRow`,
-    // and `groupedRow` all need notifying, since any of them may currently
-    // have a live row for this element.
+    // `groupedRow`, and `cacheRow` all need notifying, since any of them
+    // may currently have a live row for this element.
     themeElement.listRow?.setVisible(visible);
     themeElement.treeRow?.setVisible(visible);
     themeElement.groupedRow?.setVisible(visible);
+    themeElement.cacheRow?.setVisible(visible);
   }
 
   /**
@@ -278,8 +278,8 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
    * `themeElements`. No-op if already removed.
    *
    * Callers must call `controllerPanel`'s equivalent `removeThemeElement`
-   * FIRST, while `listRow`/`treeRow`/`groupedRow`/`instanceLayer` are
-   * still intact — this function nulls all four.
+   * FIRST, while `listRow`/`treeRow`/`groupedRow`/`cacheRow`/`instanceLayer`
+   * are still intact — this function nulls all five.
    *
    * @param {import('../model/themeElement.js').ThemeElement} themeElement
    *   The theme element to stop tracking.
@@ -291,7 +291,12 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
     detachFromStickyGroup(themeElement);
     resizeObserver.unobserve(themeElement.dataNode);
     themeElement.instanceLayer.remove();
+    // Strips both dedup markers unconditionally (a harmless no-op for
+    // whichever doesn't apply) rather than branching on which kind of
+    // element this is — this engine drives both ThemeElements (`layerId`)
+    // and CacheElements (`cacheLayerId`) generically.
     themeElement.dataNode?.removeAttribute(LAYER_ATTRIBUTES.layerId);
+    themeElement.dataNode?.removeAttribute(LAYER_ATTRIBUTES.cacheLayerId);
     themeElement.dataNode?.removeAttribute(LAYER_ATTRIBUTES.positionStrategy);
     const index = themeElements.indexOf(themeElement);
     if (index !== -1) themeElements.splice(index, 1);
@@ -299,6 +304,7 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
     themeElement.listRow = null;
     themeElement.treeRow = null;
     themeElement.groupedRow = null;
+    themeElement.cacheRow = null;
   }
 
   /**
@@ -827,10 +833,12 @@ export function createOverlayEngine({ themeElements, onDomChanged }) {
 
     themeElements.forEach((themeElement) => {
       themeElement.dataNode?.removeAttribute(LAYER_ATTRIBUTES.layerId);
+      themeElement.dataNode?.removeAttribute(LAYER_ATTRIBUTES.cacheLayerId);
       themeElement.instanceLayer = null;
       themeElement.listRow = null;
       themeElement.treeRow = null;
       themeElement.groupedRow = null;
+      themeElement.cacheRow = null;
       themeElement.stickyGroup = null;
     });
   }

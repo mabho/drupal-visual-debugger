@@ -75,7 +75,6 @@
       border-radius: var(--#{variables.$prefix}controller--input--border-radius);
       flex: 1;
       font-family: var(--#{variables.$prefix}controller--input--font-family);
-      margin: var(--#{variables.$prefix}controller--input--margin);
       overflow: var(--#{variables.$prefix}controller--input--overflow);
       padding: var(--#{variables.$prefix}controller--input--padding);
       transition: background-color var(--#{variables.$prefix}transition-speed);
@@ -251,6 +250,10 @@
 
       // Suggestions.
       &__suggestions {
+        display: flex;
+        flex-direction: column;
+        gap: var(--#{variables.$prefix}selected-element--suggedtions--gap);
+
         &-wrapper {
           @extend %selected-item-wrapper;
         }
@@ -262,6 +265,27 @@
           background-color: var(--#{variables.$prefix}color--light-gray);
           padding: 0 calc(var(--#{variables.$prefix}controller--gutter) * .25);
           white-space: nowrap;
+        }
+      }
+
+      // Cache Details — shown instead of Suggestions/Template File Path
+      // when a CacheElement, not a ThemeElement, is selected (see
+      // controllerPanel.js's setSelectedElementCacheDetails).
+      &__cache-details-wrapper {
+        @extend %selected-item-wrapper;
+      }
+
+      &__cache-details {
+        display: flex;
+        flex-direction: column;
+        gap: var(--#{variables.$prefix}selected-element--cache-details--gap);
+
+        // One heading + its rows (see appendCacheDetail) — the gap above
+        // separates these from each other, not the rows within one.
+        &__field {
+          display: flex;
+          flex-direction: column;
+          gap: var(--#{variables.$prefix}selected-element--cache-details--field--gap);
         }
       }
     }
@@ -551,6 +575,49 @@
         transition: background-color var(--#{variables.$prefix}transition-speed);
       }
     }
+
+    // Cache tab — a top-level tab (like Selected/Items), shown/hidden via
+    // the generic `.nav-target`/`.active` rule, not a sub-view switcher,
+    // so (unlike `.list`/`.branched`/`.grouped`) its `__content` needs no
+    // `:not(.active)` override of its own.
+    .cache {
+      background-color: var(--#{variables.$prefix}cache-element--background-color);
+      padding: var(--#{variables.$prefix}cache-element--padding);
+
+      &__content {
+        display: flex;
+        flex-direction: column;
+        gap: var(--#{variables.$prefix}cache-element--content--gap);
+      }
+
+      &-item {
+        display: flex;
+        flex-direction: column;
+        gap: var(--#{variables.$prefix}cache-item--gap);
+
+        &__header {
+          align-items: center;
+          column-gap: var(--#{variables.$prefix}list-element--list-item--gap);
+          display: flex;
+
+          // Reuses the Items tab's row switch styling verbatim (see
+          // buildRowControls in controllerPanel.js).
+          .list-item__activation {
+            flex: 1;
+          }
+        }
+
+        // A cache entry with no resolved page element (see
+        // drupalCacheDebugParser.js) — plain label, not a switch, since
+        // there's no overlay for it to show/select.
+        &__no-element {
+          border-radius: var(--#{variables.$prefix}controller--border-radius);
+          flex: 1;
+          padding: var(--#{variables.$prefix}list-element--list-item--activation--padding);
+        }
+
+      }
+    }
   }
 
   // Base layer.
@@ -659,7 +726,6 @@
     column-gap: var(--#{variables.$prefix}content-copy-data--column-gap);
     display: flex;
     flex-direction: var(--#{variables.$prefix}content-copy-data--flex-direction);
-    margin: var(--#{variables.$prefix}content-copy-data--margin);
 
     button {
       background-color: var(--#{variables.$prefix}content-copy-data--button--background-color);
